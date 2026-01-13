@@ -27,6 +27,9 @@ import { getResources, readResource } from "./resources/index.js";
 // Phase 2: Drift Module
 import { DRIFT_MODULE, DRIFT_TEMPLATES } from "./modules/drift/index.js";
 
+// Phase 3: PWA Module
+import { PWA_MODULE, PWA_TEMPLATES } from "./modules/pwa/index.js";
+
 // Initialize core components
 const fileSystem = new LocalFileSystem();
 const templateEngine = new TemplateEngine();
@@ -41,9 +44,13 @@ const projectEngine = new ProjectEngine(
 
 // Register modules
 moduleSystem.register(DRIFT_MODULE);
+moduleSystem.register(PWA_MODULE);
 
 // Register templates from modules
 for (const template of DRIFT_TEMPLATES) {
+  templateEngine.register(template);
+}
+for (const template of PWA_TEMPLATES) {
   templateEngine.register(template);
 }
 

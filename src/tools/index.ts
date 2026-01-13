@@ -13,6 +13,9 @@ import { formatValidationResult } from "../core/validation-framework/index.js";
 // Phase 2: Drift Module
 import { DRIFT_TOOLS, handleDriftTool, type DriftToolContext, type DriftConfig } from "../modules/drift/index.js";
 
+// Phase 3: PWA Module
+import { PWA_TOOLS, handlePWATool, type PWAToolContext, type PWAModuleConfig } from "../modules/pwa/index.js";
+
 // ============================================================================
 // TOOL SCHEMAS (Zod validation)
 // ============================================================================
@@ -247,35 +250,8 @@ export function getTools(): Tool[] {
     // ===== PHASE 2: DRIFT TOOLS =====
     ...DRIFT_TOOLS,
 
-    // ===== PHASE 3: PWA TOOLS (Placeholder) =====
-    {
-      name: "pwa_configure_manifest",
-      description: "Configure PWA manifest settings",
-      inputSchema: {
-        type: "object",
-        properties: {
-          projectId: { type: "string", description: "Project ID" },
-          name: { type: "string" },
-          shortName: { type: "string" },
-          themeColor: { type: "string" },
-          backgroundColor: { type: "string" },
-          display: { type: "string", enum: ["standalone", "fullscreen", "minimal-ui"] },
-        },
-        required: ["projectId"],
-      },
-    },
-    {
-      name: "pwa_generate_icons",
-      description: "Generate PWA icons from a source image",
-      inputSchema: {
-        type: "object",
-        properties: {
-          projectId: { type: "string", description: "Project ID" },
-          sourceImage: { type: "string", description: "Path to source image" },
-        },
-        required: ["projectId", "sourceImage"],
-      },
-    },
+    // ===== PHASE 3: PWA TOOLS =====
+    ...PWA_TOOLS,
 
     // ===== PHASE 4: STATE TOOLS (Placeholder) =====
     {
@@ -571,14 +547,45 @@ export async function handleToolCall(
       return handleDriftTool(name, args, driftCtx);
     }
 
-    // ===== PLACEHOLDER TOOLS =====
+    // ===== PHASE 3: PWA TOOLS =====
     case "pwa_configure_manifest":
     case "pwa_generate_icons":
+    case "pwa_configure_caching":
+    case "pwa_add_shortcut":
+    case "pwa_configure_install_prompt":
+    case "pwa_generate_manifest": {
+      // Create PWA tool context
+      const pwaCtx: PWAToolContext = {
+        getProject: (id: string) => context.projectEngine.get(id),
+        updateProject: (id: string, updates) => context.projectEngine.update(id, updates),
+        getPWAConfig: (projectId: string) => {
+          const project = context.projectEngine.get(projectId);
+          if (!project) return undefined;
+          const moduleConfig = project.modules.find((m) => m.id === "pwa");
+          return moduleConfig?.config as PWAModuleConfig | undefined;
+        },
+        updatePWAConfig: (projectId: string, config: Partial<PWAModuleConfig>) => {
+          const project = context.projectEngine.get(projectId);
+          if (!project) return;
+          const moduleIndex = project.modules.findIndex((m) => m.id === "pwa");
+          if (moduleIndex >= 0) {
+            project.modules[moduleIndex].config = {
+              ...project.modules[moduleIndex].config,
+              ...config,
+            };
+          }
+        },
+      };
+
+      return handlePWATool(name, args, pwaCtx);
+    }
+
+    // ===== PLACEHOLDER TOOLS =====
     case "state_create_provider":
     case "state_create_bloc":
       return {
         success: false,
-        message: `Tool '${name}' is not yet implemented. Coming in Phase 3-4.`,
+        message: `Tool '${name}' is not yet implemented. Coming in Phase 4.`,
       };
 
     default:
