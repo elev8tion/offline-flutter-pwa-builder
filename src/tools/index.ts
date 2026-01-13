@@ -423,11 +423,38 @@ export async function handleToolCall(
     case "module_install": {
       const parsed = ModuleInstallSchema.parse(args);
 
+      // Get the project
+      const project = context.projectEngine.get(parsed.projectId);
+      if (!project) {
+        throw new Error(`Project not found: ${parsed.projectId}`);
+      }
+
+      // Register with module system
       await context.moduleSystem.install(
         parsed.projectId,
         parsed.moduleId,
         parsed.config
       );
+
+      // Add module to project's modules array if not already present
+      const existingModuleIndex = project.modules.findIndex((m) => m.id === parsed.moduleId);
+      if (existingModuleIndex >= 0) {
+        // Update existing module config
+        project.modules[existingModuleIndex].config = {
+          ...project.modules[existingModuleIndex].config,
+          ...(parsed.config || {}),
+        };
+      } else {
+        // Add new module to project
+        project.modules.push({
+          id: parsed.moduleId,
+          enabled: true,
+          config: parsed.config || {},
+        });
+      }
+
+      // Update the project
+      context.projectEngine.update(parsed.projectId, { modules: project.modules });
 
       return {
         success: true,
