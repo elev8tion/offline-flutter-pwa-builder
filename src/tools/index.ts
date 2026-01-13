@@ -22,6 +22,9 @@ import { STATE_TOOLS, handleStateTool, type StateToolContext, type StateModuleCo
 // Phase 5: Security Module
 import { SECURITY_TOOLS, handleSecurityTool, type SecurityToolContext, type SecurityModuleConfig } from "../modules/security/index.js";
 
+// Phase 6: Build Module
+import { BUILD_TOOLS, handleBuildTool, type BuildToolContext, type BuildModuleConfig } from "../modules/build/index.js";
+
 // ============================================================================
 // TOOL SCHEMAS (Zod validation)
 // ============================================================================
@@ -264,6 +267,9 @@ export function getTools(): Tool[] {
 
     // ===== PHASE 5: SECURITY TOOLS =====
     ...SECURITY_TOOLS,
+
+    // ===== PHASE 6: BUILD TOOLS =====
+    ...BUILD_TOOLS,
   ];
 }
 
@@ -636,6 +642,68 @@ export async function handleToolCall(
       };
 
       return handleSecurityTool(name, args, securityCtx);
+    }
+
+    // ===== PHASE 6: BUILD TOOLS =====
+    case "project_create":
+    case "project_build":
+    case "project_serve":
+    case "project_deploy":
+    case "project_configure_deployment":
+    case "project_validate":
+    case "project_export":
+    case "project_test_offline":
+    case "project_audit":
+    case "project_configure_cicd": {
+      // Check if it's a build module tool (has platform or mode parameter)
+      // Core tools use project_create/project_build differently
+      const isBuildModuleTool =
+        name === "project_serve" ||
+        name === "project_deploy" ||
+        name === "project_configure_deployment" ||
+        name === "project_export" ||
+        name === "project_test_offline" ||
+        name === "project_audit" ||
+        name === "project_configure_cicd" ||
+        (name === "project_build" && (args.mode || args.webRenderer)) ||
+        (name === "project_validate" && (args.checkDependencies !== undefined || args.checkAssets !== undefined));
+
+      if (!isBuildModuleTool) {
+        // Fall through to default for core tools
+        throw new Error(`Unknown tool: ${name}`);
+      }
+
+      // Create build tool context
+      const buildCtx: BuildToolContext = {
+        getProject: (id: string) => context.projectEngine.get(id),
+        updateProject: (id: string, updates) => context.projectEngine.update(id, updates),
+        getBuildConfig: (projectId: string) => {
+          const project = context.projectEngine.get(projectId);
+          if (!project) return undefined;
+          const moduleConfig = project.modules.find((m) => m.id === "build");
+          return moduleConfig?.config as BuildModuleConfig | undefined;
+        },
+        updateBuildConfig: (projectId: string, config: Partial<BuildModuleConfig>) => {
+          const project = context.projectEngine.get(projectId);
+          if (!project) return;
+          const moduleIndex = project.modules.findIndex((m) => m.id === "build");
+          if (moduleIndex >= 0) {
+            project.modules[moduleIndex].config = {
+              ...project.modules[moduleIndex].config,
+              ...config,
+            };
+          } else {
+            // Create build module if not exists
+            project.modules.push({
+              id: "build",
+              enabled: true,
+              config: config as unknown as Record<string, unknown>,
+            });
+          }
+        },
+      };
+
+      return handleBuildTool(name, args, buildCtx);
     }
 
     default:
