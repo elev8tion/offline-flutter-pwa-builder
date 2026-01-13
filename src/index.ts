@@ -33,6 +33,12 @@ import { PWA_MODULE, PWA_TEMPLATES } from "./modules/pwa/index.js";
 // Phase 4: State Module
 import { STATE_MODULE, STATE_TEMPLATES } from "./modules/state/index.js";
 
+// Phase 5: Security Module
+import { SECURITY_MODULE, SECURITY_TEMPLATES } from "./modules/security/index.js";
+
+// Phase 6: Build Module
+import { BUILD_MODULE, BUILD_TEMPLATES } from "./modules/build/index.js";
+
 // Initialize core components
 const fileSystem = new LocalFileSystem();
 const templateEngine = new TemplateEngine();
@@ -49,6 +55,8 @@ const projectEngine = new ProjectEngine(
 moduleSystem.register(DRIFT_MODULE);
 moduleSystem.register(PWA_MODULE);
 moduleSystem.register(STATE_MODULE);
+moduleSystem.register(SECURITY_MODULE);
+moduleSystem.register(BUILD_MODULE);
 
 // Register templates from modules
 for (const template of DRIFT_TEMPLATES) {
@@ -58,6 +66,12 @@ for (const template of PWA_TEMPLATES) {
   templateEngine.register(template);
 }
 for (const template of STATE_TEMPLATES) {
+  templateEngine.register(template);
+}
+for (const template of SECURITY_TEMPLATES) {
+  templateEngine.register(template);
+}
+for (const template of BUILD_TEMPLATES) {
   templateEngine.register(template);
 }
 
