@@ -19,6 +19,9 @@ import { PWA_TOOLS, handlePWATool, type PWAToolContext, type PWAModuleConfig } f
 // Phase 4: State Module
 import { STATE_TOOLS, handleStateTool, type StateToolContext, type StateModuleConfig } from "../modules/state/index.js";
 
+// Phase 5: Security Module
+import { SECURITY_TOOLS, handleSecurityTool, type SecurityToolContext, type SecurityModuleConfig } from "../modules/security/index.js";
+
 // ============================================================================
 // TOOL SCHEMAS (Zod validation)
 // ============================================================================
@@ -258,6 +261,9 @@ export function getTools(): Tool[] {
 
     // ===== PHASE 4: STATE TOOLS =====
     ...STATE_TOOLS,
+
+    // ===== PHASE 5: SECURITY TOOLS =====
+    ...SECURITY_TOOLS,
   ];
 }
 
@@ -592,6 +598,44 @@ export async function handleToolCall(
       };
 
       return handleStateTool(name, args, stateCtx);
+    }
+
+    // ===== PHASE 5: SECURITY TOOLS =====
+    case "security_enable_encryption":
+    case "security_add_validation":
+    case "security_audit":
+    case "security_classify_data": {
+      // Create security tool context
+      const securityCtx: SecurityToolContext = {
+        getProject: (id: string) => context.projectEngine.get(id),
+        updateProject: (id: string, updates) => context.projectEngine.update(id, updates),
+        getSecurityConfig: (projectId: string) => {
+          const project = context.projectEngine.get(projectId);
+          if (!project) return undefined;
+          const moduleConfig = project.modules.find((m) => m.id === "security");
+          return moduleConfig?.config as SecurityModuleConfig | undefined;
+        },
+        updateSecurityConfig: (projectId: string, config: Partial<SecurityModuleConfig>) => {
+          const project = context.projectEngine.get(projectId);
+          if (!project) return;
+          const moduleIndex = project.modules.findIndex((m) => m.id === "security");
+          if (moduleIndex >= 0) {
+            project.modules[moduleIndex].config = {
+              ...project.modules[moduleIndex].config,
+              ...config,
+            };
+          } else {
+            // Create security module if not exists
+            project.modules.push({
+              id: "security",
+              enabled: true,
+              config: config,
+            });
+          }
+        },
+      };
+
+      return handleSecurityTool(name, args, securityCtx);
     }
 
     default:
