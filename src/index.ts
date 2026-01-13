@@ -24,6 +24,9 @@ import { LocalFileSystem } from "./core/filesystem/index.js";
 import { getTools, handleToolCall } from "./tools/index.js";
 import { getResources, readResource } from "./resources/index.js";
 
+// Phase 2: Drift Module
+import { DRIFT_MODULE, DRIFT_TEMPLATES } from "./modules/drift/index.js";
+
 // Initialize core components
 const fileSystem = new LocalFileSystem();
 const templateEngine = new TemplateEngine();
@@ -35,6 +38,14 @@ const projectEngine = new ProjectEngine(
   moduleSystem,
   validationFramework
 );
+
+// Register modules
+moduleSystem.register(DRIFT_MODULE);
+
+// Register templates from modules
+for (const template of DRIFT_TEMPLATES) {
+  templateEngine.register(template);
+}
 
 // Create MCP Server
 const server = new Server(

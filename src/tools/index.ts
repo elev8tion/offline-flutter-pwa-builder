@@ -10,6 +10,9 @@ import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { ToolContext } from "../core/types.js";
 import { formatValidationResult } from "../core/validation-framework/index.js";
 
+// Phase 2: Drift Module
+import { DRIFT_TOOLS, handleDriftTool, type DriftToolContext, type DriftConfig } from "../modules/drift/index.js";
+
 // ============================================================================
 // TOOL SCHEMAS (Zod validation)
 // ============================================================================
@@ -241,32 +244,8 @@ export function getTools(): Tool[] {
       },
     },
 
-    // ===== PHASE 2: DRIFT TOOLS (Placeholder) =====
-    {
-      name: "drift_add_table",
-      description: "Add a new table to the Drift database",
-      inputSchema: {
-        type: "object",
-        properties: {
-          projectId: { type: "string", description: "Project ID" },
-          tableName: { type: "string", description: "Table name" },
-          columns: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                name: { type: "string" },
-                type: { type: "string" },
-                nullable: { type: "boolean" },
-                primaryKey: { type: "boolean" },
-              },
-            },
-            description: "Table columns",
-          },
-        },
-        required: ["projectId", "tableName", "columns"],
-      },
-    },
+    // ===== PHASE 2: DRIFT TOOLS =====
+    ...DRIFT_TOOLS,
 
     // ===== PHASE 3: PWA TOOLS (Placeholder) =====
     {
@@ -559,15 +538,47 @@ export async function handleToolCall(
       };
     }
 
-    // ===== PLACEHOLDER TOOLS =====
+    // ===== PHASE 2: DRIFT TOOLS =====
     case "drift_add_table":
+    case "drift_add_relation":
+    case "drift_generate_dao":
+    case "drift_create_migration":
+    case "drift_enable_encryption":
+    case "drift_run_codegen": {
+      // Create drift tool context
+      const driftCtx: DriftToolContext = {
+        getProject: (id: string) => context.projectEngine.get(id),
+        updateProject: (id: string, updates) => context.projectEngine.update(id, updates),
+        getDriftConfig: (projectId: string) => {
+          const project = context.projectEngine.get(projectId);
+          if (!project) return undefined;
+          const moduleConfig = project.modules.find((m) => m.id === "drift");
+          return moduleConfig?.config as DriftConfig | undefined;
+        },
+        updateDriftConfig: (projectId: string, config: Partial<DriftConfig>) => {
+          const project = context.projectEngine.get(projectId);
+          if (!project) return;
+          const moduleIndex = project.modules.findIndex((m) => m.id === "drift");
+          if (moduleIndex >= 0) {
+            project.modules[moduleIndex].config = {
+              ...project.modules[moduleIndex].config,
+              ...config,
+            };
+          }
+        },
+      };
+
+      return handleDriftTool(name, args, driftCtx);
+    }
+
+    // ===== PLACEHOLDER TOOLS =====
     case "pwa_configure_manifest":
     case "pwa_generate_icons":
     case "state_create_provider":
     case "state_create_bloc":
       return {
         success: false,
-        message: `Tool '${name}' is not yet implemented. Coming in Phase 2-4.`,
+        message: `Tool '${name}' is not yet implemented. Coming in Phase 3-4.`,
       };
 
     default:
