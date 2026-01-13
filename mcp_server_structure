@@ -1,0 +1,2782 @@
+For true offline-first PWAs, your stack is:
+  ┌─────────────────┬─────────────────────┬────────────────────────────────┐
+  │      Layer      │     Technology      │            Purpose             │
+  ├─────────────────┼─────────────────────┼────────────────────────────────┤
+  │ Storage         │ Drift + WASM + OPFS │ Local SQLite in browser        │
+  ├─────────────────┼─────────────────────┼────────────────────────────────┤
+  │ Caching         │ Service Workers     │ Cache app shell + assets       │
+  ├─────────────────┼─────────────────────┼────────────────────────────────┤
+  │ Sync (optional) │ Custom sync engine  │ When online, push/pull data    │
+  ├─────────────────┼─────────────────────┼────────────────────────────────┤
+  │ State           │ Riverpod/Bloc       │ Offline-aware state management │
+  └─────────────────┴─────────────────────┴────────────────────────────────┘
+  ---
+  Pivoted Foundation: Offline Flutter PWA Builder MCP
+
+  Architecture Overview
+
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │                 OFFLINE FLUTTER PWA BUILDER MCP                     │
+  ├─────────────────────────────────────────────────────────────────────┤
+  │                        CORE LAYER                                   │
+  │  ┌─────────────┬──────────────┬─────────────┬──────────────────┐   │
+  │  │  Project    │  Template    │  Validation │  Security        │   │
+  │  │  Engine     │  Engine      │  Framework  │  Framework       │   │
+  │  └─────────────┴──────────────┴─────────────┴──────────────────┘   │
+  ├─────────────────────────────────────────────────────────────────────┤
+  │                     OFFLINE MODULES                                 │
+  │  ┌─────────────┬──────────────┬─────────────┬──────────────────┐   │
+  │  │  Drift      │  Service     │  PWA        │  Sync            │   │
+  │  │  Module     │  Worker Mod  │  Manifest   │  Engine          │   │
+  │  └─────────────┴──────────────┴─────────────┴──────────────────┘   │
+  ├─────────────────────────────────────────────────────────────────────┤
+  │                     FEATURE MODULES                                 │
+  │  ┌─────────────┬──────────────┬─────────────┬──────────────────┐   │
+  │  │  Auth       │  Forms       │  Media      │  Notifications   │   │
+  │  │  (Offline)  │  Builder     │  Cache      │  (Local)         │   │
+  │  └─────────────┴──────────────┴─────────────┴──────────────────┘   │
+  └─────────────────────────────────────────────────────────────────────┘
+
+  ---
+  PHASE 1: Core Abstractions
+
+  Objective
+
+  Build the foundation that ALL modules plug into. This is project-agnostic infrastructure.
+
+  ---
+  1.1 Project Engine
+
+  Purpose: Define, create, and manage project structures
+
+  Schema Definition:
+
+  // schemas/project.schema.ts
+
+  interface ProjectDefinition {
+    id: string;                          // UUID
+    name: string;                        // my_awesome_app
+    displayName: string;                 // My Awesome App
+    version: string;                     // 1.0.0
+
+    // Flutter PWA Specific
+    pwa: PWAConfig;
+    offline: OfflineConfig;
+
+    // Architecture
+    architecture: 'clean' | 'feature-first' | 'layer-first';
+    stateManagement: 'riverpod' | 'bloc' | 'provider';
+
+    // Modules enabled
+    modules: ModuleConfig[];
+
+    // Build targets
+    targets: ('web' | 'android' | 'ios' | 'windows' | 'macos' | 'linux')[];
+  }
+
+  interface PWAConfig {
+    name: string;
+    shortName: string;
+    description: string;
+    themeColor: string;
+    backgroundColor: string;
+    display: 'standalone' | 'fullscreen' | 'minimal-ui';
+    orientation: 'portrait' | 'landscape' | 'any';
+    icons: IconConfig[];
+    startUrl: string;
+    scope: string;
+  }
+
+  interface OfflineConfig {
+    strategy: 'offline-first' | 'online-first' | 'cache-first';
+    storage: {
+      type: 'drift';                     // Only Drift for your use case
+      encryption: boolean;
+      maxSize?: number;                  // MB
+    };
+    caching: {
+      assets: boolean;
+      api: boolean;
+      ttl: number;                       // Seconds
+    };
+    sync?: SyncConfig;                   // Optional online sync
+  }
+
+  interface SyncConfig {
+    enabled: boolean;
+    endpoint?: string;
+    strategy: 'manual' | 'auto' | 'periodic';
+    conflictResolution: 'client-wins' | 'server-wins' | 'merge';
+  }
+
+  interface ModuleConfig {
+    id: string;
+    enabled: boolean;
+    config: Record<string, unknown>;
+  }
+
+  Implementation Map:
+
+  src/core/project-engine/
+  ├── index.ts                    # Public API
+  ├── project-definition.ts       # Schema + validation
+  ├── project-factory.ts          # Creates new projects
+  ├── project-loader.ts           # Loads existing projects
+  ├── project-validator.ts        # Validates project config
+  └── project-persistence.ts      # Save/load project.json
+
+  Key Functions:
+
+  // src/core/project-engine/index.ts
+
+  export interface ProjectEngine {
+    // Create
+    create(definition: ProjectDefinition): Promise<Project>;
+
+    // Load
+    load(projectPath: string): Promise<Project>;
+
+    // Validate
+    validate(project: Project): ValidationResult;
+
+    // Modify
+    addModule(project: Project, moduleId: string, config: unknown): Promise<void>;
+    removeModule(project: Project, moduleId: string): Promise<void>;
+    updateConfig(project: Project, updates: Partial<ProjectDefinition>): Promise<void>;
+
+    // Query
+    getStructure(project: Project): DirectoryTree;
+    getDependencies(project: Project): Dependency[];
+  }
+
+  ---
+  1.2 Template Engine
+
+  Purpose: Render code templates with project context
+
+  Schema Definition:
+
+  // schemas/template.schema.ts
+
+  interface Template {
+    id: string;                          // drift_database
+    name: string;                        // Drift Database
+    description: string;
+
+    // Template content
+    type: 'file' | 'directory' | 'snippet';
+    source: string;                      // Path to .template file or inline
+
+    // Output configuration
+    output: {
+      path: string;                      // Supports {{variables}}
+      filename: string;                  // Supports {{variables}}
+      extension: string;
+    };
+
+    // Conditions for when to apply
+    conditions?: TemplateCondition[];
+
+    // Post-processing
+    transforms?: Transform[];
+
+    // Dependencies this template needs
+    requires?: string[];                 // Other template IDs
+  }
+
+  interface TemplateCondition {
+    field: string;                       // project.offline.storage.type
+    operator: 'eq' | 'neq' | 'in' | 'contains' | 'exists';
+    value: unknown;
+  }
+
+  interface Transform {
+    type: 'format' | 'import-sort' | 'remove-unused' | 'custom';
+    options?: Record<string, unknown>;
+  }
+
+  interface TemplateContext {
+    project: ProjectDefinition;
+    module: ModuleConfig;
+    timestamp: string;
+    // Custom variables from module
+    [key: string]: unknown;
+  }
+
+  Implementation Map:
+
+  src/core/template-engine/
+  ├── index.ts                    # Public API
+  ├── template-registry.ts        # Stores all templates
+  ├── template-loader.ts          # Loads .template files
+  ├── template-renderer.ts        # Mustache/Handlebars rendering
+  ├── template-resolver.ts        # Resolves output paths
+  ├── condition-evaluator.ts      # Evaluates conditions
+  └── transforms/
+      ├── dart-formatter.ts       # dart format
+      ├── import-sorter.ts        # Sort imports
+      └── custom-transform.ts     # User-defined
+
+  Key Functions:
+
+  // src/core/template-engine/index.ts
+
+  export interface TemplateEngine {
+    // Registry
+    register(template: Template): void;
+    registerFromDirectory(path: string): Promise<void>;
+    get(templateId: string): Template | undefined;
+    list(filter?: TemplateFilter): Template[];
+
+    // Rendering
+    render(templateId: string, context: TemplateContext): Promise<RenderedFile>;
+    renderMultiple(templateIds: string[], context: TemplateContext): Promise<RenderedFile[]>;
+    renderAll(context: TemplateContext): Promise<RenderedFile[]>;
+
+    // Preview
+    preview(templateId: string, context: TemplateContext): string;
+
+    // Validation
+    validateTemplate(template: Template): ValidationResult;
+  }
+
+  interface RenderedFile {
+    path: string;
+    content: string;
+    template: Template;
+  }
+
+  ---
+  1.3 Module System
+
+  Purpose: Pluggable modules that extend functionality
+
+  Schema Definition:
+
+  // schemas/module.schema.ts
+
+  interface Module {
+    // Identity
+    id: string;                          // drift, auth, forms
+    name: string;                        // Drift SQLite
+    version: string;
+    description: string;
+
+    // Compatibility
+    compatibleTargets: ('web' | 'android' | 'ios' | 'desktop')[];
+    dependencies: ModuleDependency[];    // Other modules required
+    conflicts: string[];                 // Modules that conflict
+
+    // Configuration schema
+    configSchema: JSONSchema;
+    defaultConfig: Record<string, unknown>;
+
+    // Assets
+    templates: Template[];
+    assets: Asset[];                     // WASM files, etc.
+
+    // Lifecycle hooks
+    hooks: ModuleHooks;
+  }
+
+  interface ModuleDependency {
+    moduleId: string;
+    version: string;
+    optional: boolean;
+  }
+
+  interface Asset {
+    id: string;
+    source: string;                      // Path in module
+    destination: string;                 // Path in project (supports {{vars}})
+    platforms: string[];
+  }
+
+  interface ModuleHooks {
+    // Called when module is added to project
+    onInstall?: (ctx: HookContext) => Promise<void>;
+
+    // Called before code generation
+    beforeGenerate?: (ctx: HookContext) => Promise<void>;
+
+    // Called during code generation
+    onGenerate?: (ctx: HookContext) => Promise<GeneratedFile[]>;
+
+    // Called after code generation
+    afterGenerate?: (ctx: HookContext) => Promise<void>;
+
+    // Called before build
+    beforeBuild?: (ctx: HookContext) => Promise<void>;
+
+    // Called after build
+    afterBuild?: (ctx: HookContext) => Promise<void>;
+
+    // Called when module is removed
+    onUninstall?: (ctx: HookContext) => Promise<void>;
+  }
+
+  interface HookContext {
+    project: Project;
+    module: ModuleConfig;
+    templateEngine: TemplateEngine;
+    fileSystem: FileSystem;
+    logger: Logger;
+  }
+
+  Implementation Map:
+
+  src/core/module-system/
+  ├── index.ts                    # Public API
+  ├── module-registry.ts          # Stores all modules
+  ├── module-loader.ts            # Loads modules from disk
+  ├── module-validator.ts         # Validates module definition
+  ├── module-resolver.ts          # Resolves dependencies
+  ├── hook-executor.ts            # Runs lifecycle hooks
+  └── config-merger.ts            # Merges module configs
+
+  Key Functions:
+
+  // src/core/module-system/index.ts
+
+  export interface ModuleSystem {
+    // Registry
+    register(module: Module): void;
+    loadFromDirectory(path: string): Promise<void>;
+    get(moduleId: string): Module | undefined;
+    list(): Module[];
+
+    // Resolution
+    resolveDependencies(moduleIds: string[]): DependencyTree;
+    checkConflicts(moduleIds: string[]): ConflictResult;
+
+    // Installation
+    install(project: Project, moduleId: string, config?: unknown): Promise<void>;
+    uninstall(project: Project, moduleId: string): Promise<void>;
+
+    // Generation
+    generate(project: Project): Promise<GeneratedFile[]>;
+
+    // Configuration
+    getConfigSchema(moduleId: string): JSONSchema;
+    validateConfig(moduleId: string, config: unknown): ValidationResult;
+  }
+
+  ---
+  1.4 Validation Framework
+
+  Purpose: Extensible validation for code, config, and security
+
+  Schema Definition:
+
+  // schemas/validation.schema.ts
+
+  interface Validator {
+    id: string;
+    name: string;
+    description: string;
+
+    // What this validates
+    target: 'project' | 'module' | 'file' | 'code' | 'config';
+
+    // File patterns (if target is 'file' or 'code')
+    patterns?: string[];                 // *.dart, pubspec.yaml
+
+    // Severity
+    severity: 'error' | 'warning' | 'info';
+
+    // The validation function
+    validate: (input: ValidationInput) => Promise<ValidationResult>;
+  }
+
+  interface ValidationInput {
+    project: Project;
+    file?: FileInfo;
+    content?: string;
+    context: Record<string, unknown>;
+  }
+
+  interface ValidationResult {
+    valid: boolean;
+    issues: ValidationIssue[];
+  }
+
+  interface ValidationIssue {
+    validator: string;
+    severity: 'error' | 'warning' | 'info';
+    message: string;
+    file?: string;
+    line?: number;
+    column?: number;
+    suggestion?: string;
+    autofix?: AutoFix;
+  }
+
+  interface AutoFix {
+    description: string;
+    apply: () => Promise<void>;
+  }
+
+  Implementation Map:
+
+  src/core/validation-framework/
+  ├── index.ts                    # Public API
+  ├── validator-registry.ts       # Stores validators
+  ├── validation-runner.ts        # Executes validations
+  ├── issue-formatter.ts          # Formats output
+  ├── autofix-executor.ts         # Applies fixes
+  └── validators/
+      ├── project-structure.ts    # Valid project structure
+      ├── pubspec-validator.ts    # Valid pubspec.yaml
+      ├── drift-schema.ts         # Valid Drift tables
+      ├── pwa-manifest.ts         # Valid manifest.json
+      └── security-audit.ts       # Security checks
+
+  Key Functions:
+
+  // src/core/validation-framework/index.ts
+
+  export interface ValidationFramework {
+    // Registry
+    register(validator: Validator): void;
+    get(validatorId: string): Validator | undefined;
+    list(filter?: ValidatorFilter): Validator[];
+
+    // Execution
+    validate(project: Project, options?: ValidationOptions): Promise<ValidationReport>;
+    validateFile(project: Project, filePath: string): Promise<ValidationResult>;
+
+    // Autofix
+    applyFix(issue: ValidationIssue): Promise<void>;
+    applyAllFixes(issues: ValidationIssue[]): Promise<FixReport>;
+
+    // Reporting
+    formatReport(report: ValidationReport, format: 'text' | 'json' | 'html'): string;
+  }
+
+  interface ValidationOptions {
+    validators?: string[];               // Specific validators to run
+    severity?: 'error' | 'warning' | 'info';
+    autofix?: boolean;
+  }
+
+  interface ValidationReport {
+    valid: boolean;
+    summary: {
+      errors: number;
+      warnings: number;
+      info: number;
+    };
+    issues: ValidationIssue[];
+    duration: number;
+  }
+
+  ---
+  1.5 Security Framework
+
+  Purpose: Enforce security policies across all generated code
+
+  Schema Definition:
+
+  // schemas/security.schema.ts
+
+  interface SecurityPolicy {
+    id: string;
+    name: string;
+    description: string;
+    severity: 'critical' | 'high' | 'medium' | 'low';
+
+    // What to check
+    target: 'code' | 'config' | 'dependency' | 'runtime';
+
+    // The check
+    check: (input: SecurityInput) => Promise<SecurityFinding[]>;
+
+    // Auto-remediation
+    remediate?: (finding: SecurityFinding) => Promise<void>;
+  }
+
+  interface SecurityFinding {
+    policy: string;
+    severity: 'critical' | 'high' | 'medium' | 'low';
+    title: string;
+    description: string;
+    location?: {
+      file: string;
+      line?: number;
+      column?: number;
+    };
+    recommendation: string;
+    references?: string[];               // CVE, OWASP links
+    canRemediate: boolean;
+  }
+
+  interface SecurityScan {
+    project: Project;
+    policies: SecurityPolicy[];
+    findings: SecurityFinding[];
+    score: number;                       // 0-100
+    timestamp: Date;
+  }
+
+  Built-in Security Policies:
+  ┌───────────────────────┬─────────────────────────────────┐
+  │       Policy ID       │             Checks              │
+  ├───────────────────────┼─────────────────────────────────┤
+  │ no-hardcoded-secrets  │ API keys, passwords in code     │
+  ├───────────────────────┼─────────────────────────────────┤
+  │ secure-storage        │ Encryption for sensitive data   │
+  ├───────────────────────┼─────────────────────────────────┤
+  │ input-validation      │ SQL injection, XSS prevention   │
+  ├───────────────────────┼─────────────────────────────────┤
+  │ dependency-audit      │ Known vulnerabilities in deps   │
+  ├───────────────────────┼─────────────────────────────────┤
+  │ secure-headers        │ CSP, CORS configuration         │
+  ├───────────────────────┼─────────────────────────────────┤
+  │ offline-data-security │ OPFS encryption, key management │
+  └───────────────────────┴─────────────────────────────────┘
+  Implementation Map:
+
+  src/core/security-framework/
+  ├── index.ts                    # Public API
+  ├── policy-registry.ts          # Stores policies
+  ├── security-scanner.ts         # Runs scans
+  ├── remediation-engine.ts       # Applies fixes
+  ├── report-generator.ts         # Security reports
+  └── policies/
+      ├── secrets-detection.ts
+      ├── storage-security.ts
+      ├── input-validation.ts
+      ├── dependency-audit.ts
+      └── offline-security.ts
+
+  ---
+  1.6 File System Abstraction
+
+  Purpose: Unified file operations that work locally and in-memory
+
+  // src/core/filesystem/index.ts
+
+  export interface FileSystem {
+    // Read
+    read(path: string): Promise<string>;
+    readBinary(path: string): Promise<Buffer>;
+    exists(path: string): Promise<boolean>;
+    isDirectory(path: string): Promise<boolean>;
+    list(path: string, pattern?: string): Promise<string[]>;
+
+    // Write
+    write(path: string, content: string): Promise<void>;
+    writeBinary(path: string, content: Buffer): Promise<void>;
+    mkdir(path: string, recursive?: boolean): Promise<void>;
+    copy(source: string, destination: string): Promise<void>;
+    move(source: string, destination: string): Promise<void>;
+    delete(path: string): Promise<void>;
+
+    // Utilities
+    resolve(...paths: string[]): string;
+    relative(from: string, to: string): string;
+    dirname(path: string): string;
+    basename(path: string): string;
+
+    // Transactions
+    beginTransaction(): Transaction;
+  }
+
+  interface Transaction {
+    write(path: string, content: string): void;
+    delete(path: string): void;
+    commit(): Promise<void>;
+    rollback(): void;
+  }
+
+  Implementation Map:
+
+  src/core/filesystem/
+  ├── index.ts                    # Public API
+  ├── local-filesystem.ts         # Real file system
+  ├── memory-filesystem.ts        # In-memory (for testing/preview)
+  ├── transaction.ts              # Atomic operations
+  └── glob-matcher.ts             # Pattern matching
+
+  ---
+  Phase 1 Deliverables Summary
+
+  src/core/
+  ├── project-engine/             # Project management
+  ├── template-engine/            # Code generation
+  ├── module-system/              # Plugin architecture
+  ├── validation-framework/       # Quality checks
+  ├── security-framework/         # Security policies
+  ├── filesystem/                 # File operations
+  └── index.ts                    # Unified exports
+
+  schemas/
+  ├── project.schema.json
+  ├── template.schema.json
+  ├── module.schema.json
+  ├── validation.schema.json
+  └── security.schema.json
+
+  ---
+  PHASE 2: Drift Module
+
+  Objective
+
+  Implement complete Drift + WASM + OPFS support as a module
+
+  ---
+  2.1 Module Definition
+
+  // src/modules/drift/index.ts
+
+  export const driftModule: Module = {
+    id: 'drift',
+    name: 'Drift SQLite Database',
+    version: '1.0.0',
+    description: 'Offline-first SQLite database with WASM + OPFS for web',
+
+    compatibleTargets: ['web', 'android', 'ios', 'windows', 'macos', 'linux'],
+
+    dependencies: [],
+    conflicts: [],
+
+    configSchema: {
+      type: 'object',
+      properties: {
+        databaseName: { type: 'string', default: 'app_db' },
+        encryption: { type: 'boolean', default: false },
+        encryptionKeyStrategy: {
+          type: 'string',
+          enum: ['derived', 'stored', 'user-provided'],
+          default: 'derived'
+        },
+        tables: {
+          type: 'array',
+          items: { $ref: '#/definitions/TableDefinition' }
+        },
+        enableMigrations: { type: 'boolean', default: true },
+        webWorker: { type: 'boolean', default: true },
+        opfs: { type: 'boolean', default: true }
+      },
+      definitions: {
+        TableDefinition: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            columns: { type: 'array', items: { $ref: '#/definitions/Column' } },
+            indexes: { type: 'array', items: { $ref: '#/definitions/Index' } },
+            primaryKey: { type: 'array', items: { type: 'string' } }
+          }
+        },
+        Column: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            type: { type: 'string', enum: ['integer', 'text', 'real', 'blob', 'boolean', 'datetime'] },
+            nullable: { type: 'boolean', default: true },
+            unique: { type: 'boolean', default: false },
+            defaultValue: { type: 'string' },
+            references: { $ref: '#/definitions/ForeignKey' }
+          }
+        },
+        ForeignKey: {
+          type: 'object',
+          properties: {
+            table: { type: 'string' },
+            column: { type: 'string' },
+            onDelete: { type: 'string', enum: ['cascade', 'set-null', 'restrict'] }
+          }
+        },
+        Index: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            columns: { type: 'array', items: { type: 'string' } },
+            unique: { type: 'boolean', default: false }
+          }
+        }
+      }
+    },
+
+    defaultConfig: {
+      databaseName: 'app_db',
+      encryption: false,
+      tables: [],
+      enableMigrations: true,
+      webWorker: true,
+      opfs: true
+    },
+
+    templates: [], // Defined below
+
+    assets: [
+      {
+        id: 'sqlite3_wasm',
+        source: 'assets/sqlite3.wasm',
+        destination: 'web/sqlite3.wasm',
+        platforms: ['web']
+      },
+      {
+        id: 'drift_worker',
+        source: 'assets/drift_worker.js',
+        destination: 'web/drift_worker.js',
+        platforms: ['web']
+      }
+    ],
+
+    hooks: {
+      onInstall: driftOnInstall,
+      onGenerate: driftOnGenerate,
+      beforeBuild: driftBeforeBuild
+    }
+  };
+
+  ---
+  2.2 Templates
+
+  src/modules/drift/templates/
+  ├── database/
+  │   ├── database.dart.template           # Main database class
+  │   ├── database_connection.dart.template # Platform connections
+  │   └── database_provider.dart.template   # DI provider
+  ├── tables/
+  │   ├── table.dart.template              # Single table
+  │   └── tables_barrel.dart.template      # Export all tables
+  ├── daos/
+  │   ├── dao.dart.template                # DAO for table
+  │   └── base_dao.dart.template           # Base DAO class
+  ├── web/
+  │   ├── web_database.dart.template       # Web-specific setup
+  │   ├── drift_worker.dart.template       # Web worker
+  │   └── opfs_setup.dart.template         # OPFS initialization
+  ├── native/
+  │   └── native_database.dart.template    # FFI setup
+  ├── migrations/
+  │   ├── migration.dart.template          # Migration file
+  │   └── migration_strategy.dart.template # Migration runner
+  └── encryption/
+      ├── key_manager.dart.template        # Key derivation
+      └── encrypted_database.dart.template # Encrypted wrapper
+
+  Example Template: database.dart.template
+
+  // {{project.name}}/lib/core/database/database.dart
+  // Generated by Offline Flutter PWA Builder
+  // DO NOT EDIT MANUALLY
+
+  import 'package:drift/drift.dart';
+
+  {{#each tables}}
+  import 'tables/{{snakeCase name}}.dart';
+  {{/each}}
+
+  {{#each daos}}
+  import 'daos/{{snakeCase name}}_dao.dart';
+  {{/each}}
+
+  part 'database.g.dart';
+
+  @DriftDatabase(
+    tables: [
+      {{#each tables}}
+      {{pascalCase name}},
+      {{/each}}
+    ],
+    daos: [
+      {{#each daos}}
+      {{pascalCase name}}Dao,
+      {{/each}}
+    ],
+  )
+  class {{pascalCase databaseName}} extends _${{pascalCase databaseName}} {
+    {{pascalCase databaseName}}(QueryExecutor e) : super(e);
+
+    @override
+    int get schemaVersion => {{schemaVersion}};
+
+    {{#if enableMigrations}}
+    @override
+    MigrationStrategy get migration => MigrationStrategy(
+      onCreate: (Migrator m) async {
+        await m.createAll();
+      },
+      onUpgrade: (Migrator m, int from, int to) async {
+        await customMigration(m, from, to);
+      },
+    );
+
+    Future<void> customMigration(Migrator m, int from, int to) async {
+      // Add migrations here
+      {{#each migrations}}
+      if (from < {{version}}) {
+        {{migrationCode}}
+      }
+      {{/each}}
+    }
+    {{/if}}
+  }
+
+  Example Template: table.dart.template
+
+  // {{project.name}}/lib/core/database/tables/{{snakeCase table.name}}.dart
+
+  import 'package:drift/drift.dart';
+
+  {{#if table.references}}
+  {{#each table.references}}
+  import '{{snakeCase table}}.dart';
+  {{/each}}
+  {{/if}}
+
+  class {{pascalCase table.name}} extends Table {
+    {{#each table.columns}}
+    {{columnType type}}Column get {{camelCase name}} =>
+      {{columnType type}}()
+        {{#unless nullable}}.withDefault({{defaultOrRequired type}}){{/unless}}
+        {{#if unique}}.unique(){{/if}}
+        {{#if references}}.references({{pascalCase references.table}}, #{{camelCase references.column}}{{#if references.onDelete}}, onDelete: KeyAction.{{references.onDelete}}{{/if}}){{/if}}
+        ();
+    {{/each}}
+
+    {{#if table.primaryKey}}
+    @override
+    Set<Column> get primaryKey => { {{#each table.primaryKey}}{{camelCase this}}{{#unless @last}}, {{/unless}}{{/each}} };
+    {{/if}}
+
+    {{#if table.indexes}}
+    @override
+    List<Set<Column>> get uniqueKeys => [
+      {{#each table.indexes}}
+      {{#if unique}}
+      { {{#each columns}}{{camelCase this}}{{#unless @last}}, {{/unless}}{{/each}} },
+      {{/if}}
+      {{/each}}
+    ];
+    {{/if}}
+  }
+
+  Example Template: web_database.dart.template
+
+  // {{project.name}}/lib/core/database/web/web_database.dart
+
+  import 'package:drift/drift.dart';
+  import 'package:drift/wasm.dart';
+  import 'package:sqlite3/wasm.dart';
+
+  import '../database.dart';
+
+  const _dbName = '{{databaseName}}';
+
+  {{pascalCase databaseName}} constructDb() {
+    return {{pascalCase databaseName}}(LazyDatabase(() async {
+      final result = await WasmDatabase.open(
+        databaseName: _dbName,
+        sqlite3Uri: Uri.parse('sqlite3.wasm'),
+        driftWorkerUri: Uri.parse('drift_worker.js'),
+        {{#if opfs}}
+        // Use OPFS for persistent storage
+        setupStorage: (db) async {
+          final root = await storageDirectory;
+          return await root.getFileHandle('$_dbName.db', create: true);
+        },
+        {{/if}}
+      );
+
+      if (result.missingFeatures.isNotEmpty) {
+        print('Using ${result.chosenImplementation} due to missing features: '
+            '${result.missingFeatures}');
+      }
+
+      return result.resolvedExecutor;
+    }));
+  }
+
+  {{#if opfs}}
+  Future<FileSystemDirectoryHandle> get storageDirectory async {
+    final navigator = window.navigator;
+    final storage = navigator.storage;
+    return await storage.getDirectory();
+  }
+  {{/if}}
+
+  ---
+  2.3 Lifecycle Hooks Implementation
+
+  // src/modules/drift/hooks.ts
+
+  export async function driftOnInstall(ctx: HookContext): Promise<void> {
+    const { project, module, fileSystem, logger } = ctx;
+
+    // 1. Add dependencies to pubspec.yaml
+    const pubspecPath = `${project.path}/pubspec.yaml`;
+    const pubspec = await loadYaml(await fileSystem.read(pubspecPath));
+
+    pubspec.dependencies = {
+      ...pubspec.dependencies,
+      drift: '^2.15.0',
+      sqlite3_flutter_libs: '^0.5.0',
+      path_provider: '^2.1.0',
+      path: '^1.8.0',
+    };
+
+    pubspec.dev_dependencies = {
+      ...pubspec.dev_dependencies,
+      drift_dev: '^2.15.0',
+      build_runner: '^2.4.0',
+    };
+
+    // Add web-specific deps if targeting web
+    if (project.targets.includes('web')) {
+      pubspec.dependencies['sqlite3'] = '^2.3.0';
+    }
+
+    await fileSystem.write(pubspecPath, dumpYaml(pubspec));
+    logger.info('Updated pubspec.yaml with Drift dependencies');
+
+    // 2. Copy WASM assets if web target
+    if (project.targets.includes('web')) {
+      await copyAssets(ctx, ['sqlite3_wasm', 'drift_worker']);
+      logger.info('Copied WASM assets to web/');
+    }
+
+    // 3. Create directory structure
+    const dirs = [
+      'lib/core/database',
+      'lib/core/database/tables',
+      'lib/core/database/daos',
+    ];
+
+    if (project.targets.includes('web')) {
+      dirs.push('lib/core/database/web');
+    }
+
+    for (const dir of dirs) {
+      await fileSystem.mkdir(`${project.path}/${dir}`, true);
+    }
+
+    logger.info('Created Drift directory structure');
+  }
+
+  export async function driftOnGenerate(ctx: HookContext): Promise<GeneratedFile[]> {
+    const { project, module, templateEngine } = ctx;
+    const config = module.config as DriftConfig;
+    const files: GeneratedFile[] = [];
+
+    // 1. Generate main database file
+    files.push(await templateEngine.render('drift/database', {
+      project,
+      ...config,
+      schemaVersion: calculateSchemaVersion(config),
+    }));
+
+    // 2. Generate each table
+    for (const table of config.tables) {
+      files.push(await templateEngine.render('drift/table', {
+        project,
+        table,
+      }));
+
+      // Generate DAO for each table
+      files.push(await templateEngine.render('drift/dao', {
+        project,
+        table,
+      }));
+    }
+
+    // 3. Generate platform-specific connection code
+    if (project.targets.includes('web')) {
+      files.push(await templateEngine.render('drift/web_database', {
+        project,
+        ...config,
+      }));
+    }
+
+    files.push(await templateEngine.render('drift/native_database', {
+      project,
+      ...config,
+    }));
+
+    // 4. Generate connection factory
+    files.push(await templateEngine.render('drift/database_connection', {
+      project,
+      ...config,
+      hasWeb: project.targets.includes('web'),
+    }));
+
+    // 5. Generate encryption if enabled
+    if (config.encryption) {
+      files.push(await templateEngine.render('drift/key_manager', {
+        project,
+        keyStrategy: config.encryptionKeyStrategy,
+      }));
+
+      files.push(await templateEngine.render('drift/encrypted_database', {
+        project,
+        ...config,
+      }));
+    }
+
+    return files;
+  }
+
+  export async function driftBeforeBuild(ctx: HookContext): Promise<void> {
+    const { project, logger } = ctx;
+
+    // Run build_runner to generate .g.dart files
+    logger.info('Running Drift code generation...');
+
+    await runCommand(
+      'dart run build_runner build --delete-conflicting-outputs',
+      { cwd: project.path }
+    );
+
+    logger.info('Drift code generation complete');
+  }
+
+  ---
+  2.4 MCP Tools for Drift
+
+  // src/modules/drift/tools.ts
+
+  export const driftTools = [
+    {
+      name: 'drift_add_table',
+      description: 'Add a new table to the Drift database',
+      parameters: {
+        type: 'object',
+        properties: {
+          projectPath: { type: 'string' },
+          tableName: { type: 'string' },
+          columns: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                name: { type: 'string' },
+                type: { type: 'string', enum: ['integer', 'text', 'real', 'blob', 'boolean', 'datetime'] },
+                nullable: { type: 'boolean' },
+                unique: { type: 'boolean' },
+                defaultValue: { type: 'string' },
+              },
+              required: ['name', 'type']
+            }
+          },
+          primaryKey: { type: 'array', items: { type: 'string' } },
+          indexes: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                columns: { type: 'array', items: { type: 'string' } },
+                unique: { type: 'boolean' }
+              }
+            }
+          }
+        },
+        required: ['projectPath', 'tableName', 'columns']
+      },
+      handler: handleAddTable
+    },
+
+    {
+      name: 'drift_add_relation',
+      description: 'Add a foreign key relationship between tables',
+      parameters: {
+        type: 'object',
+        properties: {
+          projectPath: { type: 'string' },
+          fromTable: { type: 'string' },
+          fromColumn: { type: 'string' },
+          toTable: { type: 'string' },
+          toColumn: { type: 'string' },
+          onDelete: { type: 'string', enum: ['cascade', 'set-null', 'restrict'] }
+        },
+        required: ['projectPath', 'fromTable', 'fromColumn', 'toTable', 'toColumn']
+      },
+      handler: handleAddRelation
+    },
+
+    {
+      name: 'drift_generate_dao',
+      description: 'Generate a DAO with custom queries for a table',
+      parameters: {
+        type: 'object',
+        properties: {
+          projectPath: { type: 'string' },
+          tableName: { type: 'string' },
+          queries: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                name: { type: 'string' },
+                type: { type: 'string', enum: ['select', 'insert', 'update', 'delete'] },
+                where: { type: 'string' },
+                orderBy: { type: 'string' },
+                limit: { type: 'number' }
+              }
+            }
+          }
+        },
+        required: ['projectPath', 'tableName']
+      },
+      handler: handleGenerateDao
+    },
+
+    {
+      name: 'drift_create_migration',
+      description: 'Create a migration for schema changes',
+      parameters: {
+        type: 'object',
+        properties: {
+          projectPath: { type: 'string' },
+          description: { type: 'string' },
+          changes: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                type: { type: 'string', enum: ['add-column', 'drop-column', 'add-table', 'drop-table', 'add-index', 'custom'] },
+                table: { type: 'string' },
+                column: { type: 'object' },
+                sql: { type: 'string' }
+              }
+            }
+          }
+        },
+        required: ['projectPath', 'description', 'changes']
+      },
+      handler: handleCreateMigration
+    },
+
+    {
+      name: 'drift_enable_encryption',
+      description: 'Enable database encryption with SQLCipher',
+      parameters: {
+        type: 'object',
+        properties: {
+          projectPath: { type: 'string' },
+          keyStrategy: {
+            type: 'string',
+            enum: ['derived', 'stored', 'user-provided'],
+            description: 'derived: from device ID, stored: in secure storage, user-provided: password'
+          }
+        },
+        required: ['projectPath', 'keyStrategy']
+      },
+      handler: handleEnableEncryption
+    },
+
+    {
+      name: 'drift_run_codegen',
+      description: 'Run Drift code generation (build_runner)',
+      parameters: {
+        type: 'object',
+        properties: {
+          projectPath: { type: 'string' },
+          watch: { type: 'boolean', default: false }
+        },
+        required: ['projectPath']
+      },
+      handler: handleRunCodegen
+    }
+  ];
+
+  ---
+  2.5 Directory Structure
+
+  src/modules/drift/
+  ├── index.ts                    # Module definition
+  ├── config.ts                   # Type definitions
+  ├── hooks.ts                    # Lifecycle hooks
+  ├── tools.ts                    # MCP tools
+  ├── validators.ts               # Drift-specific validations
+  ├── templates/
+  │   ├── database/
+  │   ├── tables/
+  │   ├── daos/
+  │   ├── web/
+  │   ├── native/
+  │   ├── migrations/
+  │   └── encryption/
+  └── assets/
+      ├── sqlite3.wasm            # Pre-compiled WASM
+      └── drift_worker.js         # Web worker
+
+  ---
+  Phase 2 Deliverables Summary
+  ┌───────────────────┬───────────────┬────────────────────────────────┐
+  │     Component     │     Files     │            Purpose             │
+  ├───────────────────┼───────────────┼────────────────────────────────┤
+  │ Module Definition │ index.ts      │ Config schema, assets, hooks   │
+  ├───────────────────┼───────────────┼────────────────────────────────┤
+  │ Templates         │ 12+ templates │ Code generation                │
+  ├───────────────────┼───────────────┼────────────────────────────────┤
+  │ Hooks             │ hooks.ts      │ Install, generate, build       │
+  ├───────────────────┼───────────────┼────────────────────────────────┤
+  │ Tools             │ 6 MCP tools   │ Table/DAO/migration management │
+  ├───────────────────┼───────────────┼────────────────────────────────┤
+  │ Assets            │ WASM + worker │ Web runtime                    │
+  ├───────────────────┼───────────────┼────────────────────────────────┤
+  │ Validators        │ validators.ts │ Schema validation              │
+  └───────────────────┴───────────────┴────────────────────────────────┘
+  ---
+  PHASE 3: PWA Module
+
+  Objective
+
+  Complete PWA configuration, manifest, service workers, and offline caching
+
+  ---
+  3.1 Module Definition
+
+  // src/modules/pwa/index.ts
+
+  export const pwaModule: Module = {
+    id: 'pwa',
+    name: 'Progressive Web App',
+    version: '1.0.0',
+    description: 'PWA manifest, service workers, and offline caching',
+
+    compatibleTargets: ['web'],
+    dependencies: [],
+    conflicts: [],
+
+    configSchema: {
+      type: 'object',
+      properties: {
+        manifest: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            shortName: { type: 'string', maxLength: 12 },
+            description: { type: 'string' },
+            themeColor: { type: 'string', pattern: '^#[0-9a-fA-F]{6}$' },
+            backgroundColor: { type: 'string', pattern: '^#[0-9a-fA-F]{6}$' },
+            display: { type: 'string', enum: ['standalone', 'fullscreen', 'minimal-ui', 'browser'] },
+            orientation: { type: 'string', enum: ['portrait', 'landscape', 'any'] },
+            startUrl: { type: 'string', default: '/' },
+            scope: { type: 'string', default: '/' },
+            categories: { type: 'array', items: { type: 'string' } },
+          },
+          required: ['name', 'shortName']
+        },
+        icons: {
+          type: 'object',
+          properties: {
+            source: { type: 'string' },  // Path to source icon
+            sizes: { type: 'array', items: { type: 'number' }, default: [72, 96, 128, 144, 152, 192, 384, 512] },
+            generateMaskable: { type: 'boolean', default: true }
+          }
+        },
+        serviceWorker: {
+          type: 'object',
+          properties: {
+            strategy: { type: 'string', enum: ['cache-first', 'network-first', 'stale-while-revalidate'] },
+            precache: { type: 'array', items: { type: 'string' } },
+            runtimeCache: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  pattern: { type: 'string' },
+                  strategy: { type: 'string' },
+                  maxAge: { type: 'number' },
+                  maxEntries: { type: 'number' }
+                }
+              }
+            },
+            offlineFallback: { type: 'string' }
+          }
+        },
+        installPrompt: {
+          type: 'object',
+          properties: {
+            enabled: { type: 'boolean', default: true },
+            delay: { type: 'number', default: 30000 },
+            showOnlyOnce: { type: 'boolean', default: false }
+          }
+        }
+      }
+    },
+
+    defaultConfig: {
+      manifest: {
+        display: 'standalone',
+        orientation: 'any',
+        startUrl: '/',
+        scope: '/'
+      },
+      serviceWorker: {
+        strategy: 'cache-first',
+        precache: ['/', '/main.dart.js', '/flutter.js'],
+      },
+      installPrompt: {
+        enabled: true,
+        delay: 30000
+      }
+    },
+
+    templates: [],
+    assets: [],
+
+    hooks: {
+      onInstall: pwaOnInstall,
+      onGenerate: pwaOnGenerate,
+      afterBuild: pwaAfterBuild
+    }
+  };
+
+  ---
+  3.2 Templates
+
+  src/modules/pwa/templates/
+  ├── manifest/
+  │   └── manifest.json.template          # PWA manifest
+  ├── service-worker/
+  │   ├── sw.js.template                  # Service worker
+  │   ├── sw-cache-first.js.template      # Cache-first strategy
+  │   ├── sw-network-first.js.template    # Network-first strategy
+  │   └── sw-stale-revalidate.js.template # Stale-while-revalidate
+  ├── install-prompt/
+  │   ├── install_prompt.dart.template    # Install prompt widget
+  │   └── pwa_service.dart.template       # PWA detection/install
+  ├── offline/
+  │   ├── offline_page.dart.template      # Offline fallback page
+  │   └── connectivity_service.dart.template
+  └── index/
+      └── index.html.template             # Enhanced index.html
+
+  Example: manifest.json.template
+
+  {
+    "name": "{{manifest.name}}",
+    "short_name": "{{manifest.shortName}}",
+    "description": "{{manifest.description}}",
+    "start_url": "{{manifest.startUrl}}",
+    "scope": "{{manifest.scope}}",
+    "display": "{{manifest.display}}",
+    "orientation": "{{manifest.orientation}}",
+    "theme_color": "{{manifest.themeColor}}",
+    "background_color": "{{manifest.backgroundColor}}",
+    {{#if manifest.categories}}
+    "categories": [{{#each manifest.categories}}"{{this}}"{{#unless @last}}, {{/unless}}{{/each}}],
+    {{/if}}
+    "icons": [
+      {{#each icons}}
+      {
+        "src": "icons/icon-{{size}}x{{size}}.png",
+        "sizes": "{{size}}x{{size}}",
+        "type": "image/png"{{#if maskable}},
+        "purpose": "maskable"{{/if}}
+      }{{#unless @last}},{{/unless}}
+      {{/each}}
+    ],
+    "screenshots": [],
+    "prefer_related_applications": false
+  }
+
+  Example: sw.js.template (Cache-First)
+
+  // {{project.name}} Service Worker
+  // Generated by Offline Flutter PWA Builder
+
+  const CACHE_NAME = '{{project.name}}-v{{version}}';
+  const OFFLINE_URL = '/offline.html';
+
+  const PRECACHE_URLS = [
+    '/',
+    '/main.dart.js',
+    '/flutter.js',
+    '/manifest.json',
+    {{#each serviceWorker.precache}}
+    '{{this}}',
+    {{/each}}
+    OFFLINE_URL
+  ];
+
+  // Install event - precache assets
+  self.addEventListener('install', (event) => {
+    event.waitUntil(
+      caches.open(CACHE_NAME)
+        .then((cache) => cache.addAll(PRECACHE_URLS))
+        .then(() => self.skipWaiting())
+    );
+  });
+
+  // Activate event - clean old caches
+  self.addEventListener('activate', (event) => {
+    event.waitUntil(
+      caches.keys()
+        .then((cacheNames) => {
+          return Promise.all(
+            cacheNames
+              .filter((name) => name !== CACHE_NAME)
+              .map((name) => caches.delete(name))
+          );
+        })
+        .then(() => self.clients.claim())
+    );
+  });
+
+  // Fetch event - cache-first strategy
+  self.addEventListener('fetch', (event) => {
+    if (event.request.method !== 'GET') return;
+
+    event.respondWith(
+      caches.match(event.request)
+        .then((cachedResponse) => {
+          if (cachedResponse) {
+            // Return cached version
+            return cachedResponse;
+          }
+
+          // Fetch from network
+          return fetch(event.request)
+            .then((response) => {
+              // Don't cache non-successful responses
+              if (!response || response.status !== 200) {
+                return response;
+              }
+
+              // Clone and cache
+              const responseToCache = response.clone();
+              caches.open(CACHE_NAME)
+                .then((cache) => cache.put(event.request, responseToCache));
+
+              return response;
+            })
+            .catch(() => {
+              // Offline fallback for navigation requests
+              if (event.request.mode === 'navigate') {
+                return caches.match(OFFLINE_URL);
+              }
+            });
+        })
+    );
+  });
+
+  {{#if serviceWorker.runtimeCache}}
+  // Runtime caching rules
+  const runtimeCacheRules = [
+    {{#each serviceWorker.runtimeCache}}
+    {
+      pattern: new RegExp('{{pattern}}'),
+      strategy: '{{strategy}}',
+      maxAge: {{maxAge}},
+      maxEntries: {{maxEntries}}
+    },
+    {{/each}}
+  ];
+  {{/if}}
+
+  Example: pwa_service.dart.template
+
+  // {{project.name}}/lib/core/pwa/pwa_service.dart
+
+  import 'dart:html' as html;
+  import 'dart:js' as js;
+
+  class PwaService {
+    static final PwaService _instance = PwaService._internal();
+    factory PwaService() => _instance;
+    PwaService._internal();
+
+    html.BeforeInstallPromptEvent? _deferredPrompt;
+    bool _isInstalled = false;
+
+    bool get isInstalled => _isInstalled;
+    bool get canInstall => _deferredPrompt != null;
+
+    /// Check if running as installed PWA
+    bool get isRunningAsPwa {
+      final navigator = html.window.navigator;
+      final standalone = js.context.callMethod('eval', [
+        'window.matchMedia("(display-mode: standalone)").matches'
+      ]);
+      return standalone == true ||
+             (navigator.userAgent.contains('Safari') &&
+              !navigator.userAgent.contains('Chrome'));
+    }
+
+    /// Initialize PWA service
+    void initialize() {
+      // Listen for install prompt
+      html.window.addEventListener('beforeinstallprompt', (event) {
+        event.preventDefault();
+        _deferredPrompt = event as html.BeforeInstallPromptEvent;
+      });
+
+      // Listen for app installed
+      html.window.addEventListener('appinstalled', (event) {
+        _isInstalled = true;
+        _deferredPrompt = null;
+      });
+
+      // Check if already installed
+      _isInstalled = isRunningAsPwa;
+    }
+
+    /// Show install prompt
+    Future<bool> promptInstall() async {
+      if (_deferredPrompt == null) return false;
+
+      _deferredPrompt!.prompt();
+      final result = await _deferredPrompt!.userChoice;
+      _deferredPrompt = null;
+
+      return result.outcome == 'accepted';
+    }
+
+    /// Register service worker
+    Future<void> registerServiceWorker() async {
+      if (html.window.navigator.serviceWorker != null) {
+        try {
+          await html.window.navigator.serviceWorker!.register('/sw.js');
+          print('Service Worker registered');
+        } catch (e) {
+          print('Service Worker registration failed: $e');
+        }
+      }
+    }
+
+    /// Check for updates
+    Future<bool> checkForUpdates() async {
+      if (html.window.navigator.serviceWorker == null) return false;
+
+      final registration = await html.window.navigator.serviceWorker!.ready;
+      await registration.update();
+
+      return registration.waiting != null;
+    }
+
+    /// Apply update and reload
+    Future<void> applyUpdate() async {
+      final registration = await html.window.navigator.serviceWorker!.ready;
+      registration.waiting?.postMessage({'type': 'SKIP_WAITING'});
+      html.window.location.reload();
+    }
+  }
+
+  ---
+  3.3 MCP Tools for PWA
+
+  // src/modules/pwa/tools.ts
+
+  export const pwaTools = [
+    {
+      name: 'pwa_configure_manifest',
+      description: 'Configure PWA manifest settings',
+      parameters: {
+        type: 'object',
+        properties: {
+          projectPath: { type: 'string' },
+          name: { type: 'string' },
+          shortName: { type: 'string' },
+          description: { type: 'string' },
+          themeColor: { type: 'string' },
+          backgroundColor: { type: 'string' },
+          display: { type: 'string', enum: ['standalone', 'fullscreen', 'minimal-ui'] },
+          orientation: { type: 'string', enum: ['portrait', 'landscape', 'any'] }
+        },
+        required: ['projectPath', 'name', 'shortName']
+      },
+      handler: handleConfigureManifest
+    },
+
+    {
+      name: 'pwa_generate_icons',
+      description: 'Generate all PWA icon sizes from source image',
+      parameters: {
+        type: 'object',
+        properties: {
+          projectPath: { type: 'string' },
+          sourceIcon: { type: 'string' },
+          sizes: { type: 'array', items: { type: 'number' } },
+          generateMaskable: { type: 'boolean' }
+        },
+        required: ['projectPath', 'sourceIcon']
+      },
+      handler: handleGenerateIcons
+    },
+
+    {
+      name: 'pwa_configure_caching',
+      description: 'Configure service worker caching strategy',
+      parameters: {
+        type: 'object',
+        properties: {
+          projectPath: { type: 'string' },
+          strategy: { type: 'string', enum: ['cache-first', 'network-first', 'stale-while-revalidate'] },
+          precache: { type: 'array', items: { type: 'string' } },
+          runtimeCache: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                pattern: { type: 'string' },
+                strategy: { type: 'string' },
+                maxAge: { type: 'number' },
+                maxEntries: { type: 'number' }
+              }
+            }
+          }
+        },
+        required: ['projectPath', 'strategy']
+      },
+      handler: handleConfigureCaching
+    },
+
+    {
+      name: 'pwa_add_offline_page',
+      description: 'Add custom offline fallback page',
+      parameters: {
+        type: 'object',
+        properties: {
+          projectPath: { type: 'string' },
+          title: { type: 'string' },
+          message: { type: 'string' },
+          retryButton: { type: 'boolean' }
+        },
+        required: ['projectPath']
+      },
+      handler: handleAddOfflinePage
+    },
+
+    {
+      name: 'pwa_configure_install_prompt',
+      description: 'Configure PWA install prompt behavior',
+      parameters: {
+        type: 'object',
+        properties: {
+          projectPath: { type: 'string' },
+          enabled: { type: 'boolean' },
+          delay: { type: 'number' },
+          showOnlyOnce: { type: 'boolean' },
+          customPromptWidget: { type: 'boolean' }
+        },
+        required: ['projectPath']
+      },
+      handler: handleConfigureInstallPrompt
+    },
+
+    {
+      name: 'pwa_validate',
+      description: 'Validate PWA configuration and Lighthouse score',
+      parameters: {
+        type: 'object',
+        properties: {
+          projectPath: { type: 'string' },
+          runLighthouse: { type: 'boolean' }
+        },
+        required: ['projectPath']
+      },
+      handler: handleValidatePwa
+    }
+  ];
+
+  ---
+  3.4 Directory Structure
+
+  src/modules/pwa/
+  ├── index.ts                    # Module definition
+  ├── config.ts                   # Type definitions
+  ├── hooks.ts                    # Lifecycle hooks
+  ├── tools.ts                    # MCP tools
+  ├── icon-generator.ts           # Icon resizing utility
+  ├── validators.ts               # PWA validation
+  ├── templates/
+  │   ├── manifest/
+  │   ├── service-worker/
+  │   ├── install-prompt/
+  │   ├── offline/
+  │   └── index/
+  └── assets/
+      └── offline-template.html   # Default offline page
+
+  ---
+  PHASE 4: State Management & Architecture Module
+
+  Objective
+
+  Provide offline-aware state management patterns
+
+  ---
+  4.1 Module Definition
+
+  // src/modules/state/index.ts
+
+  export const stateModule: Module = {
+    id: 'state',
+    name: 'State Management',
+    version: '1.0.0',
+    description: 'Offline-aware state management with Riverpod or Bloc',
+
+    compatibleTargets: ['web', 'android', 'ios', 'windows', 'macos', 'linux'],
+
+    dependencies: [
+      { moduleId: 'drift', version: '*', optional: true }
+    ],
+
+    configSchema: {
+      type: 'object',
+      properties: {
+        solution: {
+          type: 'string',
+          enum: ['riverpod', 'bloc'],
+          default: 'riverpod'
+        },
+        features: {
+          type: 'object',
+          properties: {
+            offlineSync: { type: 'boolean', default: true },
+            optimisticUpdates: { type: 'boolean', default: true },
+            persistState: { type: 'boolean', default: true },
+            undoRedo: { type: 'boolean', default: false }
+          }
+        },
+        architecture: {
+          type: 'string',
+          enum: ['clean', 'feature-first', 'layer-first'],
+          default: 'clean'
+        }
+      }
+    },
+
+    templates: [],
+    assets: [],
+
+    hooks: {
+      onInstall: stateOnInstall,
+      onGenerate: stateOnGenerate
+    }
+  };
+
+  ---
+  4.2 Templates
+
+  src/modules/state/templates/
+  ├── riverpod/
+  │   ├── providers/
+  │   │   ├── base_provider.dart.template
+  │   │   ├── async_provider.dart.template
+  │   │   └── offline_provider.dart.template
+  │   ├── notifiers/
+  │   │   ├── base_notifier.dart.template
+  │   │   └── offline_notifier.dart.template
+  │   └── setup/
+  │       └── riverpod_setup.dart.template
+  ├── bloc/
+  │   ├── blocs/
+  │   │   ├── base_bloc.dart.template
+  │   │   ├── offline_bloc.dart.template
+  │   │   └── sync_bloc.dart.template
+  │   ├── events/
+  │   │   └── base_event.dart.template
+  │   ├── states/
+  │   │   └── base_state.dart.template
+  │   └── setup/
+  │       └── bloc_setup.dart.template
+  ├── common/
+  │   ├── offline_state.dart.template
+  │   ├── sync_status.dart.template
+  │   └── connectivity_notifier.dart.template
+  └── architecture/
+      ├── clean/
+      │   ├── domain/
+      │   ├── data/
+      │   └── presentation/
+      └── feature-first/
+          └── feature_structure.dart.template
+
+  Example: offline_notifier.dart.template (Riverpod)
+
+  // {{project.name}}/lib/core/state/offline_notifier.dart
+
+  import 'package:flutter_riverpod/flutter_riverpod.dart';
+  import '../database/database.dart';
+  import '../sync/sync_service.dart';
+
+  /// Base class for offline-first state management
+  abstract class OfflineNotifier<T> extends StateNotifier<AsyncValue<T>> {
+    final Ref ref;
+    final {{pascalCase databaseName}} db;
+
+    OfflineNotifier(this.ref, this.db) : super(const AsyncValue.loading()) {
+      _init();
+    }
+
+    /// Override to load initial data from local database
+    Future<T> loadFromLocal();
+
+    /// Override to fetch from remote (optional)
+    Future<T>? fetchFromRemote() => null;
+
+    /// Override to save to local database
+    Future<void> saveToLocal(T data);
+
+    /// Override to sync to remote (optional)
+    Future<void> syncToRemote(T data) async {}
+
+    Future<void> _init() async {
+      try {
+        // 1. Load from local first (offline-first)
+        final localData = await loadFromLocal();
+        state = AsyncValue.data(localData);
+
+        // 2. Try to fetch fresh data from remote
+        final remoteData = await fetchFromRemote();
+        if (remoteData != null) {
+          await saveToLocal(remoteData);
+          state = AsyncValue.data(remoteData);
+        }
+      } catch (e, st) {
+        state = AsyncValue.error(e, st);
+      }
+    }
+
+    /// Perform an optimistic update
+    Future<void> optimisticUpdate(
+      T Function(T current) updater, {
+      Future<void> Function()? syncAction,
+    }) async {
+      final previous = state.valueOrNull;
+      if (previous == null) return;
+
+      // 1. Update state immediately
+      final updated = updater(previous);
+      state = AsyncValue.data(updated);
+
+      // 2. Persist locally
+      await saveToLocal(updated);
+
+      // 3. Try to sync to remote
+      if (syncAction != null) {
+        try {
+          await syncAction();
+        } catch (e) {
+          // Queue for later sync
+          ref.read(syncQueueProvider.notifier).add(SyncItem(
+            id: DateTime.now().toIso8601String(),
+            action: syncAction,
+            timestamp: DateTime.now(),
+          ));
+        }
+      }
+    }
+
+    /// Force refresh from remote
+    Future<void> refresh() async {
+      state = const AsyncValue.loading();
+      await _init();
+    }
+  }
+
+  /// Sync queue for offline changes
+  final syncQueueProvider = StateNotifierProvider<SyncQueueNotifier, List<SyncItem>>((ref) {
+    return SyncQueueNotifier(ref);
+  });
+
+  class SyncItem {
+    final String id;
+    final Future<void> Function() action;
+    final DateTime timestamp;
+    int retryCount;
+
+    SyncItem({
+      required this.id,
+      required this.action,
+      required this.timestamp,
+      this.retryCount = 0,
+    });
+  }
+
+  class SyncQueueNotifier extends StateNotifier<List<SyncItem>> {
+    final Ref ref;
+
+    SyncQueueNotifier(this.ref) : super([]) {
+      _watchConnectivity();
+    }
+
+    void add(SyncItem item) {
+      state = [...state, item];
+      _persistQueue();
+    }
+
+    void _watchConnectivity() {
+      ref.listen(connectivityProvider, (prev, next) {
+        if (next == ConnectivityStatus.online) {
+          _processQueue();
+        }
+      });
+    }
+
+    Future<void> _processQueue() async {
+      final items = [...state];
+      for (final item in items) {
+        try {
+          await item.action();
+          state = state.where((i) => i.id != item.id).toList();
+        } catch (e) {
+          item.retryCount++;
+          if (item.retryCount > 3) {
+            // Remove after too many retries
+            state = state.where((i) => i.id != item.id).toList();
+          }
+        }
+      }
+      _persistQueue();
+    }
+
+    void _persistQueue() {
+      // Save queue to local storage for app restart recovery
+    }
+  }
+
+  ---
+  4.3 MCP Tools for State
+
+  // src/modules/state/tools.ts
+
+  export const stateTools = [
+    {
+      name: 'state_create_provider',
+      description: 'Create a new Riverpod provider with offline support',
+      parameters: {
+        type: 'object',
+        properties: {
+          projectPath: { type: 'string' },
+          name: { type: 'string' },
+          type: { type: 'string', enum: ['state', 'async', 'stream', 'offline'] },
+          dataType: { type: 'string' },
+          table: { type: 'string' },  // If linked to Drift table
+          features: {
+            type: 'object',
+            properties: {
+              optimisticUpdates: { type: 'boolean' },
+              syncToRemote: { type: 'boolean' },
+              caching: { type: 'boolean' }
+            }
+          }
+        },
+        required: ['projectPath', 'name', 'dataType']
+      },
+      handler: handleCreateProvider
+    },
+
+    {
+      name: 'state_create_bloc',
+      description: 'Create a new Bloc with offline support',
+      parameters: {
+        type: 'object',
+        properties: {
+          projectPath: { type: 'string' },
+          name: { type: 'string' },
+          events: { type: 'array', items: { type: 'string' } },
+          states: { type: 'array', items: { type: 'string' } },
+          table: { type: 'string' },
+          offlineSupport: { type: 'boolean' }
+        },
+        required: ['projectPath', 'name', 'events']
+      },
+      handler: handleCreateBloc
+    },
+
+    {
+      name: 'state_generate_feature',
+      description: 'Generate complete feature with state, repository, and UI',
+      parameters: {
+        type: 'object',
+        properties: {
+          projectPath: { type: 'string' },
+          featureName: { type: 'string' },
+          table: { type: 'string' },
+          operations: {
+            type: 'array',
+            items: { type: 'string', enum: ['list', 'detail', 'create', 'update', 'delete'] }
+          },
+          generateUI: { type: 'boolean' }
+        },
+        required: ['projectPath', 'featureName', 'operations']
+      },
+      handler: handleGenerateFeature
+    },
+
+    {
+      name: 'state_add_sync_queue',
+      description: 'Add offline sync queue for pending changes',
+      parameters: {
+        type: 'object',
+        properties: {
+          projectPath: { type: 'string' },
+          persistQueue: { type: 'boolean' },
+          maxRetries: { type: 'number' },
+          retryDelay: { type: 'number' }
+        },
+        required: ['projectPath']
+      },
+      handler: handleAddSyncQueue
+    }
+  ];
+
+  ---
+  PHASE 5: Security Module
+
+  Objective
+
+  Comprehensive security for offline data, encryption, and input validation
+
+  ---
+  5.1 Module Definition
+
+  // src/modules/security/index.ts
+
+  export const securityModule: Module = {
+    id: 'security',
+    name: 'Security',
+    version: '1.0.0',
+    description: 'Data encryption, secure storage, and input validation',
+
+    compatibleTargets: ['web', 'android', 'ios', 'windows', 'macos', 'linux'],
+
+    dependencies: [
+      { moduleId: 'drift', version: '*', optional: true }
+    ],
+
+    configSchema: {
+      type: 'object',
+      properties: {
+        encryption: {
+          type: 'object',
+          properties: {
+            enabled: { type: 'boolean', default: true },
+            algorithm: { type: 'string', enum: ['AES-256-GCM', 'ChaCha20-Poly1305'], default: 'AES-256-GCM' },
+            keyDerivation: { type: 'string', enum: ['PBKDF2', 'Argon2'], default: 'PBKDF2' }
+          }
+        },
+        secureStorage: {
+          type: 'object',
+          properties: {
+            provider: { type: 'string', enum: ['flutter_secure_storage', 'web_crypto'] },
+            biometricProtection: { type: 'boolean', default: false }
+          }
+        },
+        validation: {
+          type: 'object',
+          properties: {
+            sanitizeInput: { type: 'boolean', default: true },
+            preventSqlInjection: { type: 'boolean', default: true },
+            xssProtection: { type: 'boolean', default: true }
+          }
+        },
+        audit: {
+          type: 'object',
+          properties: {
+            logSensitiveAccess: { type: 'boolean', default: true },
+            logRetention: { type: 'number', default: 30 }
+          }
+        }
+      }
+    },
+
+    templates: [],
+    assets: [],
+
+    hooks: {
+      onInstall: securityOnInstall,
+      onGenerate: securityOnGenerate
+    }
+  };
+
+  ---
+  5.2 Templates
+
+  src/modules/security/templates/
+  ├── encryption/
+  │   ├── encryption_service.dart.template
+  │   ├── key_manager.dart.template
+  │   └── encrypted_value.dart.template
+  ├── secure-storage/
+  │   ├── secure_storage_service.dart.template
+  │   ├── web_secure_storage.dart.template
+  │   └── native_secure_storage.dart.template
+  ├── validation/
+  │   ├── input_validator.dart.template
+  │   ├── sanitizer.dart.template
+  │   └── validation_rules.dart.template
+  ├── audit/
+  │   ├── audit_logger.dart.template
+  │   └── security_event.dart.template
+  └── policies/
+      ├── security_policy.dart.template
+      └── data_classification.dart.template
+
+  Example: encryption_service.dart.template
+
+  // {{project.name}}/lib/core/security/encryption_service.dart
+
+  import 'dart:convert';
+  import 'dart:typed_data';
+  import 'package:pointycastle/export.dart';
+
+  class EncryptionService {
+    static final EncryptionService _instance = EncryptionService._internal();
+    factory EncryptionService() => _instance;
+    EncryptionService._internal();
+
+    late Uint8List _key;
+    bool _initialized = false;
+
+    /// Initialize with encryption key
+    Future<void> initialize(Uint8List key) async {
+      if (key.length != 32) {
+        throw ArgumentError('Key must be 256 bits (32 bytes)');
+      }
+      _key = key;
+      _initialized = true;
+    }
+
+    /// Initialize with password (derives key using {{keyDerivation}})
+    Future<void> initializeWithPassword(String password, Uint8List salt) async {
+      {{#if (eq keyDerivation 'PBKDF2')}}
+      final pbkdf2 = PBKDF2KeyDerivator(HMac(SHA256Digest(), 64));
+      pbkdf2.init(Pbkdf2Parameters(salt, 100000, 32));
+      _key = pbkdf2.process(Uint8List.fromList(utf8.encode(password)));
+      {{else}}
+      // Argon2 implementation
+      final argon2 = Argon2BytesGenerator();
+      argon2.init(Argon2Parameters(
+        Argon2Parameters.ARGON2_id,
+        salt,
+        desiredKeyLength: 32,
+        iterations: 3,
+        memory: 65536,
+        lanes: 4,
+      ));
+      _key = argon2.process(Uint8List.fromList(utf8.encode(password)));
+      {{/if}}
+      _initialized = true;
+    }
+
+    /// Encrypt data using {{algorithm}}
+    Uint8List encrypt(Uint8List plaintext) {
+      _ensureInitialized();
+
+      // Generate random IV
+      final iv = _generateSecureRandom(12);  // 96 bits for GCM
+
+      {{#if (eq algorithm 'AES-256-GCM')}}
+      final cipher = GCMBlockCipher(AESEngine());
+      cipher.init(true, AEADParameters(KeyParameter(_key), 128, iv, Uint8List(0)));
+
+      final ciphertext = cipher.process(plaintext);
+
+      // Prepend IV to ciphertext
+      return Uint8List.fromList([...iv, ...ciphertext]);
+      {{else}}
+      // ChaCha20-Poly1305 implementation
+      final cipher = ChaCha20Poly1305(ChaCha7539Engine(), Poly1305());
+      cipher.init(true, AEADParameters(KeyParameter(_key), 128, iv, Uint8List(0)));
+
+      final ciphertext = cipher.process(plaintext);
+      return Uint8List.fromList([...iv, ...ciphertext]);
+      {{/if}}
+    }
+
+    /// Decrypt data
+    Uint8List decrypt(Uint8List ciphertext) {
+      _ensureInitialized();
+
+      // Extract IV (first 12 bytes)
+      final iv = ciphertext.sublist(0, 12);
+      final encryptedData = ciphertext.sublist(12);
+
+      {{#if (eq algorithm 'AES-256-GCM')}}
+      final cipher = GCMBlockCipher(AESEngine());
+      cipher.init(false, AEADParameters(KeyParameter(_key), 128, iv, Uint8List(0)));
+
+      return cipher.process(encryptedData);
+      {{else}}
+      final cipher = ChaCha20Poly1305(ChaCha7539Engine(), Poly1305());
+      cipher.init(false, AEADParameters(KeyParameter(_key), 128, iv, Uint8List(0)));
+
+      return cipher.process(encryptedData);
+      {{/if}}
+    }
+
+    /// Encrypt string convenience method
+    String encryptString(String plaintext) {
+      final encrypted = encrypt(Uint8List.fromList(utf8.encode(plaintext)));
+      return base64.encode(encrypted);
+    }
+
+    /// Decrypt string convenience method
+    String decryptString(String ciphertext) {
+      final decrypted = decrypt(base64.decode(ciphertext));
+      return utf8.decode(decrypted);
+    }
+
+    Uint8List _generateSecureRandom(int length) {
+      final random = SecureRandom('Fortuna');
+      random.seed(KeyParameter(Uint8List.fromList(
+        List.generate(32, (_) => DateTime.now().microsecondsSinceEpoch % 256)
+      )));
+      return random.nextBytes(length);
+    }
+
+    void _ensureInitialized() {
+      if (!_initialized) {
+        throw StateError('EncryptionService not initialized. Call initialize() first.');
+      }
+    }
+  }
+
+  Example: input_validator.dart.template
+
+  // {{project.name}}/lib/core/security/input_validator.dart
+
+  class InputValidator {
+    static final InputValidator _instance = InputValidator._internal();
+    factory InputValidator() => _instance;
+    InputValidator._internal();
+
+    /// Sanitize input to prevent XSS
+    String sanitize(String input) {
+      return input
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#x27;')
+        .replaceAll('/', '&#x2F;');
+    }
+
+    /// Check for SQL injection patterns
+    bool containsSqlInjection(String input) {
+      final patterns = [
+        RegExp(r"('|\")\s*(or|and)\s*('|\")\s*=\s*('|\")", caseSensitive: false),
+        RegExp(r";\s*(drop|delete|update|insert)\s+", caseSensitive: false),
+        RegExp(r"union\s+select", caseSensitive: false),
+        RegExp(r"--\s*$"),
+        RegExp(r"/\*.*\*/"),
+      ];
+
+      return patterns.any((pattern) => pattern.hasMatch(input));
+    }
+
+    /// Validate email format
+    bool isValidEmail(String email) {
+      return RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,}$').hasMatch(email);
+    }
+
+    /// Validate password strength
+    PasswordStrength checkPasswordStrength(String password) {
+      int score = 0;
+
+      if (password.length >= 8) score++;
+      if (password.length >= 12) score++;
+      if (RegExp(r'[a-z]').hasMatch(password)) score++;
+      if (RegExp(r'[A-Z]').hasMatch(password)) score++;
+      if (RegExp(r'[0-9]').hasMatch(password)) score++;
+      if (RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(password)) score++;
+
+      if (score <= 2) return PasswordStrength.weak;
+      if (score <= 4) return PasswordStrength.medium;
+      return PasswordStrength.strong;
+    }
+
+    /// Validate and sanitize user input
+    ValidationResult validate(String input, List<ValidationRule> rules) {
+      final errors = <String>[];
+      String sanitized = input;
+
+      for (final rule in rules) {
+        switch (rule) {
+          case ValidationRule.required:
+            if (input.trim().isEmpty) errors.add('Field is required');
+            break;
+          case ValidationRule.noSqlInjection:
+            if (containsSqlInjection(input)) errors.add('Invalid characters detected');
+            break;
+          case ValidationRule.sanitizeXss:
+            sanitized = sanitize(sanitized);
+            break;
+          case ValidationRule.email:
+            if (!isValidEmail(input)) errors.add('Invalid email format');
+            break;
+          case ValidationRule.alphanumeric:
+            if (!RegExp(r'^[a-zA-Z0-9]+$').hasMatch(input)) {
+              errors.add('Only letters and numbers allowed');
+            }
+            break;
+        }
+      }
+
+      return ValidationResult(
+        isValid: errors.isEmpty,
+        sanitized: sanitized,
+        errors: errors,
+      );
+    }
+  }
+
+  enum ValidationRule {
+    required,
+    noSqlInjection,
+    sanitizeXss,
+    email,
+    alphanumeric,
+  }
+
+  enum PasswordStrength { weak, medium, strong }
+
+  class ValidationResult {
+    final bool isValid;
+    final String sanitized;
+    final List<String> errors;
+
+    ValidationResult({
+      required this.isValid,
+      required this.sanitized,
+      required this.errors,
+    });
+  }
+
+  ---
+  5.3 MCP Tools for Security
+
+  // src/modules/security/tools.ts
+
+  export const securityTools = [
+    {
+      name: 'security_enable_encryption',
+      description: 'Enable data encryption for the project',
+      parameters: {
+        type: 'object',
+        properties: {
+          projectPath: { type: 'string' },
+          algorithm: { type: 'string', enum: ['AES-256-GCM', 'ChaCha20-Poly1305'] },
+          keyDerivation: { type: 'string', enum: ['PBKDF2', 'Argon2'] },
+          encryptDatabase: { type: 'boolean' },
+          encryptFields: { type: 'array', items: { type: 'string' } }
+        },
+        required: ['projectPath']
+      },
+      handler: handleEnableEncryption
+    },
+
+    {
+      name: 'security_add_validation',
+      description: 'Add input validation to form/field',
+      parameters: {
+        type: 'object',
+        properties: {
+          projectPath: { type: 'string' },
+          fieldName: { type: 'string' },
+          rules: {
+            type: 'array',
+            items: {
+              type: 'string',
+              enum: ['required', 'email', 'phone', 'url', 'alphanumeric', 'noSqlInjection', 'sanitizeXss', 'minLength', 'maxLength', 'pattern']
+            }
+          },
+          customPattern: { type: 'string' },
+          minLength: { type: 'number' },
+          maxLength: { type: 'number' }
+        },
+        required: ['projectPath', 'fieldName', 'rules']
+      },
+      handler: handleAddValidation
+    },
+
+    {
+      name: 'security_audit',
+      description: 'Run security audit on the project',
+      parameters: {
+        type: 'object',
+        properties: {
+          projectPath: { type: 'string' },
+          checks: {
+            type: 'array',
+            items: {
+              type: 'string',
+              enum: ['hardcoded-secrets', 'insecure-storage', 'sql-injection', 'xss', 'dependencies', 'encryption']
+            }
+          }
+        },
+        required: ['projectPath']
+      },
+      handler: handleSecurityAudit
+    },
+
+    {
+      name: 'security_classify_data',
+      description: 'Classify data fields by sensitivity level',
+      parameters: {
+        type: 'object',
+        properties: {
+          projectPath: { type: 'string' },
+          table: { type: 'string' },
+          classifications: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                field: { type: 'string' },
+                level: { type: 'string', enum: ['public', 'internal', 'confidential', 'restricted'] },
+                encrypt: { type: 'boolean' },
+                mask: { type: 'boolean' }
+              }
+            }
+          }
+        },
+        required: ['projectPath', 'table', 'classifications']
+      },
+      handler: handleClassifyData
+    }
+  ];
+
+  ---
+  PHASE 6: Build & Deployment Module
+
+  Objective
+
+  Project scaffolding, build pipeline, and deployment configuration
+
+  ---
+  6.1 Module Definition
+
+  // src/modules/build/index.ts
+
+  export const buildModule: Module = {
+    id: 'build',
+    name: 'Build & Deploy',
+    version: '1.0.0',
+    description: 'Project scaffolding, build optimization, and deployment',
+
+    compatibleTargets: ['web', 'android', 'ios', 'windows', 'macos', 'linux'],
+    dependencies: [],
+    conflicts: [],
+
+    configSchema: {
+      type: 'object',
+      properties: {
+        webOptimization: {
+          type: 'object',
+          properties: {
+            treeShaking: { type: 'boolean', default: true },
+            minify: { type: 'boolean', default: true },
+            splitChunks: { type: 'boolean', default: true },
+            renderer: { type: 'string', enum: ['html', 'canvaskit', 'auto'], default: 'auto' }
+          }
+        },
+        headers: {
+          type: 'object',
+          properties: {
+            coopCoep: { type: 'boolean', default: true },  // Required for SharedArrayBuffer
+            csp: { type: 'string' },
+            cors: { type: 'object' }
+          }
+        },
+        deployment: {
+          type: 'object',
+          properties: {
+            provider: { type: 'string', enum: ['vercel', 'netlify', 'firebase', 'cloudflare', 'custom'] },
+            autoHeaders: { type: 'boolean', default: true }
+          }
+        }
+      }
+    },
+
+    templates: [],
+    assets: [],
+
+    hooks: {
+      onGenerate: buildOnGenerate
+    }
+  };
+
+  ---
+  6.2 Templates
+
+  src/modules/build/templates/
+  ├── config/
+  │   ├── vercel.json.template
+  │   ├── netlify.toml.template
+  │   ├── firebase.json.template
+  │   └── cloudflare/_headers.template
+  ├── scripts/
+  │   ├── build.sh.template
+  │   ├── deploy.sh.template
+  │   └── optimize.sh.template
+  ├── docker/
+  │   ├── Dockerfile.template
+  │   └── nginx.conf.template
+  └── ci/
+      ├── github-actions.yaml.template
+      └── gitlab-ci.yaml.template
+
+  Example: vercel.json.template
+
+  {
+    "version": 2,
+    "builds": [
+      {
+        "src": "build/web/**",
+        "use": "@vercel/static"
+      }
+    ],
+    "routes": [
+      {
+        "src": "/(.*)",
+        "dest": "/build/web/$1"
+      }
+    ],
+    "headers": [
+      {
+        "source": "/(.*)",
+        "headers": [
+          {{#if headers.coopCoep}}
+          {
+            "key": "Cross-Origin-Opener-Policy",
+            "value": "same-origin"
+          },
+          {
+            "key": "Cross-Origin-Embedder-Policy",
+            "value": "require-corp"
+          },
+          {{/if}}
+          {{#if headers.csp}}
+          {
+            "key": "Content-Security-Policy",
+            "value": "{{headers.csp}}"
+          },
+          {{/if}}
+          {
+            "key": "X-Content-Type-Options",
+            "value": "nosniff"
+          },
+          {
+            "key": "X-Frame-Options",
+            "value": "DENY"
+          }
+        ]
+      }
+    ]
+  }
+
+  Example: netlify.toml.template
+
+  [build]
+    publish = "build/web"
+    command = "flutter build web --release --web-renderer {{webOptimization.renderer}}"
+
+  [[headers]]
+    for = "/*"
+    [headers.values]
+      {{#if headers.coopCoep}}
+      Cross-Origin-Opener-Policy = "same-origin"
+      Cross-Origin-Embedder-Policy = "require-corp"
+      {{/if}}
+      X-Content-Type-Options = "nosniff"
+      X-Frame-Options = "DENY"
+      {{#if headers.csp}}
+      Content-Security-Policy = "{{headers.csp}}"
+      {{/if}}
+
+  [[redirects]]
+    from = "/*"
+    to = "/index.html"
+    status = 200
+
+  ---
+  6.3 MCP Tools for Build
+
+  // src/modules/build/tools.ts
+
+  export const buildTools = [
+    {
+      name: 'project_create',
+      description: 'Create a new offline Flutter PWA project',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string' },
+          name: { type: 'string' },
+          displayName: { type: 'string' },
+          description: { type: 'string' },
+          architecture: { type: 'string', enum: ['clean', 'feature-first', 'layer-first'] },
+          stateManagement: { type: 'string', enum: ['riverpod', 'bloc'] },
+          modules: {
+            type: 'array',
+            items: { type: 'string', enum: ['drift', 'pwa', 'state', 'security'] }
+          }
+        },
+        required: ['path', 'name']
+      },
+      handler: handleCreateProject
+    },
+
+    {
+      name: 'project_build',
+      description: 'Build the Flutter web app with optimizations',
+      parameters: {
+        type: 'object',
+        properties: {
+          projectPath: { type: 'string' },
+          mode: { type: 'string', enum: ['debug', 'profile', 'release'] },
+          renderer: { type: 'string', enum: ['html', 'canvaskit', 'auto'] },
+          optimize: { type: 'boolean' }
+        },
+        required: ['projectPath']
+      },
+      handler: handleBuild
+    },
+
+    {
+      name: 'project_configure_deployment',
+      description: 'Configure deployment for hosting provider',
+      parameters: {
+        type: 'object',
+        properties: {
+          projectPath: { type: 'string' },
+          provider: { type: 'string', enum: ['vercel', 'netlify', 'firebase', 'cloudflare', 'docker'] },
+          customDomain: { type: 'string' },
+          environment: { type: 'object' }
+        },
+        required: ['projectPath', 'provider']
+      },
+      handler: handleConfigureDeployment
+    },
+
+    {
+      name: 'project_generate_ci',
+      description: 'Generate CI/CD pipeline configuration',
+      parameters: {
+        type: 'object',
+        properties: {
+          projectPath: { type: 'string' },
+          provider: { type: 'string', enum: ['github', 'gitlab', 'bitbucket'] },
+          deployTarget: { type: 'string' },
+          runTests: { type: 'boolean' },
+          runLint: { type: 'boolean' }
+        },
+        required: ['projectPath', 'provider']
+      },
+      handler: handleGenerateCi
+    },
+
+    {
+      name: 'project_validate',
+      description: 'Validate entire project configuration and code',
+      parameters: {
+        type: 'object',
+        properties: {
+          projectPath: { type: 'string' },
+          checks: {
+            type: 'array',
+            items: {
+              type: 'string',
+              enum: ['structure', 'dependencies', 'drift', 'pwa', 'security', 'performance']
+            }
+          }
+        },
+        required: ['projectPath']
+      },
+      handler: handleValidateProject
+    },
+
+    {
+      name: 'project_analyze',
+      description: 'Analyze project for issues and improvements',
+      parameters: {
+        type: 'object',
+        properties: {
+          projectPath: { type: 'string' },
+          includePerformance: { type: 'boolean' },
+          includeSecurity: { type: 'boolean' },
+          includeAccessibility: { type: 'boolean' }
+        },
+        required: ['projectPath']
+      },
+      handler: handleAnalyzeProject
+    }
+  ];
+
+  ---
+  Complete MCP Server Structure
+
+  offline-flutter-pwa-builder/
+  ├── package.json
+  ├── tsconfig.json
+  ├── README.md
+  │
+  ├── src/
+  │   ├── index.ts                       # MCP server entry
+  │   │
+  │   ├── core/                          # PHASE 1
+  │   │   ├── project-engine/
+  │   │   ├── template-engine/
+  │   │   ├── module-system/
+  │   │   ├── validation-framework/
+  │   │   ├── security-framework/
+  │   │   └── filesystem/
+  │   │
+  │   ├── modules/                       # PHASES 2-6
+  │   │   ├── drift/                     # PHASE 2
+  │   │   ├── pwa/                       # PHASE 3
+  │   │   ├── state/                     # PHASE 4
+  │   │   ├── security/                  # PHASE 5
+  │   │   └── build/                     # PHASE 6
+  │   │
+  │   ├── tools/                         # MCP tool aggregation
+  │   │   └── index.ts
+  │   │
+  │   ├── resources/                     # MCP resources
+  │   │   └── index.ts
+  │   │
+  │   └── prompts/                       # MCP prompts
+  │       └── index.ts
+  │
+  ├── schemas/                           # JSON schemas
+  │   ├── project.schema.json
+  │   ├── module.schema.json
+  │   └── template.schema.json
+  │
+  └── tests/
+      ├── core/
+      └── modules/
+
+  ---
+  Summary: All MCP Tools
+  Phase: 1
+  Module: Core
+  Tools: module_list, module_info, template_preview
+  ────────────────────────────────────────
+  Phase: 2
+  Module: Drift
+  Tools: drift_add_table, drift_add_relation, drift_generate_dao,
+    drift_create_migration, drift_enable_encryption, drift_run_codegen
+  ────────────────────────────────────────
+  Phase: 3
+  Module: PWA
+  Tools: pwa_configure_manifest, pwa_generate_icons, pwa_configure_caching,
+    pwa_add_offline_page, pwa_configure_install_prompt, pwa_validate
+  ────────────────────────────────────────
+  Phase: 4
+  Module: State
+  Tools: state_create_provider, state_create_bloc, state_generate_feature,
+    state_add_sync_queue
+  ────────────────────────────────────────
+  Phase: 5
+  Module: Security
+  Tools: security_enable_encryption, security_add_validation, security_audit,
+    security_classify_data
+  ────────────────────────────────────────
+  Phase: 6
+  Module: Build
+  Tools: project_create, project_build, project_configure_deployment,
+    project_generate_ci, project_validate, project_analyze
+  Total: 24 MCP tools
+
+  ---
+  This is a complete, production-ready specification.
