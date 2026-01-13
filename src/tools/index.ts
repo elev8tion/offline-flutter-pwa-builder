@@ -16,6 +16,9 @@ import { DRIFT_TOOLS, handleDriftTool, type DriftToolContext, type DriftConfig }
 // Phase 3: PWA Module
 import { PWA_TOOLS, handlePWATool, type PWAToolContext, type PWAModuleConfig } from "../modules/pwa/index.js";
 
+// Phase 4: State Module
+import { STATE_TOOLS, handleStateTool, type StateToolContext, type StateModuleConfig } from "../modules/state/index.js";
+
 // ============================================================================
 // TOOL SCHEMAS (Zod validation)
 // ============================================================================
@@ -253,35 +256,8 @@ export function getTools(): Tool[] {
     // ===== PHASE 3: PWA TOOLS =====
     ...PWA_TOOLS,
 
-    // ===== PHASE 4: STATE TOOLS (Placeholder) =====
-    {
-      name: "state_create_provider",
-      description: "Create a Riverpod provider",
-      inputSchema: {
-        type: "object",
-        properties: {
-          projectId: { type: "string" },
-          name: { type: "string" },
-          stateType: { type: "string" },
-          asyncState: { type: "boolean" },
-        },
-        required: ["projectId", "name"],
-      },
-    },
-    {
-      name: "state_create_bloc",
-      description: "Create a BLoC with events and states",
-      inputSchema: {
-        type: "object",
-        properties: {
-          projectId: { type: "string" },
-          name: { type: "string" },
-          events: { type: "array", items: { type: "string" } },
-          states: { type: "array", items: { type: "string" } },
-        },
-        required: ["projectId", "name"],
-      },
-    },
+    // ===== PHASE 4: STATE TOOLS =====
+    ...STATE_TOOLS,
   ];
 }
 
@@ -580,13 +556,43 @@ export async function handleToolCall(
       return handlePWATool(name, args, pwaCtx);
     }
 
-    // ===== PLACEHOLDER TOOLS =====
+    // ===== PHASE 4: STATE TOOLS =====
     case "state_create_provider":
     case "state_create_bloc":
-      return {
-        success: false,
-        message: `Tool '${name}' is not yet implemented. Coming in Phase 4.`,
+    case "state_generate_feature":
+    case "state_configure_offline_sync": {
+      // Create state tool context
+      const stateCtx: StateToolContext = {
+        getProject: (id: string) => context.projectEngine.get(id),
+        updateProject: (id: string, updates) => context.projectEngine.update(id, updates),
+        getStateConfig: (projectId: string) => {
+          const project = context.projectEngine.get(projectId);
+          if (!project) return undefined;
+          const moduleConfig = project.modules.find((m) => m.id === "state");
+          return moduleConfig?.config as StateModuleConfig | undefined;
+        },
+        updateStateConfig: (projectId: string, config: Partial<StateModuleConfig>) => {
+          const project = context.projectEngine.get(projectId);
+          if (!project) return;
+          const moduleIndex = project.modules.findIndex((m) => m.id === "state");
+          if (moduleIndex >= 0) {
+            project.modules[moduleIndex].config = {
+              ...project.modules[moduleIndex].config,
+              ...config,
+            };
+          } else {
+            // Create state module if not exists
+            project.modules.push({
+              id: "state",
+              enabled: true,
+              config: config,
+            });
+          }
+        },
       };
+
+      return handleStateTool(name, args, stateCtx);
+    }
 
     default:
       throw new Error(`Unknown tool: ${name}`);
