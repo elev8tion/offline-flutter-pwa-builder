@@ -371,6 +371,668 @@ export function getTools(): Tool[] {
 
     // ===== PHASE 13: GITHUB TOOLS =====
     ...GITHUB_TOOLS,
+
+    // ===== PWA TOOLS (DIRECT ACCESS) =====
+    {
+      name: "pwa_configure_manifest",
+      description: "Configure PWA manifest settings (name, colors, display mode, etc.)",
+      inputSchema: {
+        type: "object",
+        properties: {
+          projectId: {
+            type: "string",
+            description: "Project ID",
+          },
+          name: {
+            type: "string",
+            description: "Full app name (max 45 chars)",
+          },
+          shortName: {
+            type: "string",
+            description: "Short app name (max 12 chars)",
+          },
+          description: {
+            type: "string",
+            description: "App description (max 300 chars)",
+          },
+          themeColor: {
+            type: "string",
+            description: "Theme color (hex format, e.g., #2196F3)",
+          },
+          backgroundColor: {
+            type: "string",
+            description: "Background color (hex format)",
+          },
+          display: {
+            type: "string",
+            enum: ["standalone", "fullscreen", "minimal-ui", "browser"],
+            description: "Display mode",
+          },
+          orientation: {
+            type: "string",
+            enum: ["any", "portrait", "landscape"],
+            description: "Screen orientation",
+          },
+          scope: {
+            type: "string",
+            description: "App scope (default: /)",
+          },
+          startUrl: {
+            type: "string",
+            description: "Start URL (default: /)",
+          },
+          categories: {
+            type: "array",
+            items: { type: "string" },
+            description: "App categories",
+          },
+        },
+        required: ["projectId"],
+      },
+    },
+    {
+      name: "pwa_generate_icons",
+      description: "Generate PWA icons configuration (standard and maskable sizes)",
+      inputSchema: {
+        type: "object",
+        properties: {
+          projectId: {
+            type: "string",
+            description: "Project ID",
+          },
+          sourceImage: {
+            type: "string",
+            description: "Source image path (optional)",
+          },
+          sizes: {
+            type: "array",
+            items: { type: "number" },
+            description: "Custom icon sizes (optional)",
+          },
+          includeMaskable: {
+            type: "boolean",
+            description: "Include maskable icons (default: true)",
+          },
+          outputPath: {
+            type: "string",
+            description: "Output path for icons (default: /icons)",
+          },
+        },
+        required: ["projectId"],
+      },
+    },
+    {
+      name: "pwa_configure_caching",
+      description: "Configure service worker caching strategies and rules",
+      inputSchema: {
+        type: "object",
+        properties: {
+          projectId: {
+            type: "string",
+            description: "Project ID",
+          },
+          precacheAssets: {
+            type: "boolean",
+            description: "Precache static assets",
+          },
+          skipWaiting: {
+            type: "boolean",
+            description: "Skip waiting for SW activation",
+          },
+          clientsClaim: {
+            type: "boolean",
+            description: "Claim clients immediately",
+          },
+          navigationPreload: {
+            type: "boolean",
+            description: "Enable navigation preload",
+          },
+          offlineFallbackPage: {
+            type: "string",
+            description: "Offline fallback page path",
+          },
+          rules: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                pattern: {
+                  type: "string",
+                  description: "URL pattern (regex)",
+                },
+                strategy: {
+                  type: "string",
+                  enum: ["cache-first", "network-first", "stale-while-revalidate", "network-only", "cache-only"],
+                  description: "Caching strategy",
+                },
+                maxAgeSeconds: {
+                  type: "number",
+                  description: "Cache max age in seconds",
+                },
+                maxEntries: {
+                  type: "number",
+                  description: "Max cache entries",
+                },
+              },
+            },
+            description: "Caching rules",
+          },
+        },
+        required: ["projectId"],
+      },
+    },
+    {
+      name: "pwa_add_shortcut",
+      description: "Add a PWA shortcut (app launcher shortcut)",
+      inputSchema: {
+        type: "object",
+        properties: {
+          projectId: {
+            type: "string",
+            description: "Project ID",
+          },
+          name: {
+            type: "string",
+            description: "Shortcut name",
+          },
+          url: {
+            type: "string",
+            description: "Shortcut URL",
+          },
+          shortName: {
+            type: "string",
+            description: "Short name (optional)",
+          },
+          description: {
+            type: "string",
+            description: "Shortcut description",
+          },
+          iconSrc: {
+            type: "string",
+            description: "Icon source path",
+          },
+        },
+        required: ["projectId", "name", "url"],
+      },
+    },
+    {
+      name: "pwa_configure_install_prompt",
+      description: "Configure the PWA install prompt behavior and appearance",
+      inputSchema: {
+        type: "object",
+        properties: {
+          projectId: {
+            type: "string",
+            description: "Project ID",
+          },
+          enabled: {
+            type: "boolean",
+            description: "Enable install prompt",
+          },
+          delay: {
+            type: "number",
+            description: "Delay before showing prompt (ms)",
+          },
+          showOnVisit: {
+            type: "number",
+            description: "Show after N visits",
+          },
+          customPrompt: {
+            type: "boolean",
+            description: "Use custom prompt UI",
+          },
+          promptTitle: {
+            type: "string",
+            description: "Prompt title",
+          },
+          promptMessage: {
+            type: "string",
+            description: "Prompt message",
+          },
+          promptInstallButton: {
+            type: "string",
+            description: "Install button text",
+          },
+          promptCancelButton: {
+            type: "string",
+            description: "Cancel button text",
+          },
+        },
+        required: ["projectId"],
+      },
+    },
+    {
+      name: "pwa_generate_manifest",
+      description: "Generate the manifest.json file content from current config",
+      inputSchema: {
+        type: "object",
+        properties: {
+          projectId: {
+            type: "string",
+            description: "Project ID",
+          },
+        },
+        required: ["projectId"],
+      },
+    },
+
+    // ===== STATE MANAGEMENT TOOLS (DIRECT ACCESS) =====
+    {
+      name: "state_create_provider",
+      description: "Create a Riverpod provider for state management",
+      inputSchema: {
+        type: "object",
+        properties: {
+          projectId: {
+            type: "string",
+            description: "Project ID",
+          },
+          name: {
+            type: "string",
+            description: "Provider name (camelCase, e.g., 'userSettings')",
+          },
+          stateType: {
+            type: "string",
+            description: "Dart type of the state (e.g., 'String', 'List<User>')",
+          },
+          type: {
+            type: "string",
+            enum: ["provider", "stateProvider", "stateNotifierProvider", "futureProvider", "streamProvider", "changeNotifierProvider", "notifierProvider", "asyncNotifierProvider"],
+            description: "Type of Riverpod provider",
+          },
+          asyncState: {
+            type: "boolean",
+            description: "Whether the state is async (FutureProvider/StreamProvider)",
+          },
+          autoDispose: {
+            type: "boolean",
+            description: "Auto-dispose when no longer used",
+          },
+          family: {
+            type: "boolean",
+            description: "Create a family provider (parameterized)",
+          },
+          familyParamType: {
+            type: "string",
+            description: "Parameter type for family providers",
+          },
+          initialValue: {
+            type: "string",
+            description: "Initial value expression",
+          },
+          dependencies: {
+            type: "array",
+            items: { type: "string" },
+            description: "Import paths for dependencies",
+          },
+          description: {
+            type: "string",
+            description: "Provider description",
+          },
+        },
+        required: ["projectId", "name", "stateType"],
+      },
+    },
+    {
+      name: "state_create_bloc",
+      description: "Create a BLoC (Business Logic Component) with events and states",
+      inputSchema: {
+        type: "object",
+        properties: {
+          projectId: {
+            type: "string",
+            description: "Project ID",
+          },
+          name: {
+            type: "string",
+            description: "BLoC name (PascalCase, e.g., 'UserAuth')",
+          },
+          events: {
+            type: "array",
+            items: {
+              oneOf: [
+                { type: "string" },
+                {
+                  type: "object",
+                  properties: {
+                    name: { type: "string" },
+                    description: { type: "string" },
+                    properties: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          name: { type: "string" },
+                          type: { type: "string" },
+                          required: { type: "boolean" },
+                        },
+                      },
+                    },
+                  },
+                },
+              ],
+            },
+            description: "BLoC events (strings or full config objects)",
+          },
+          states: {
+            type: "array",
+            items: {
+              oneOf: [
+                { type: "string" },
+                {
+                  type: "object",
+                  properties: {
+                    name: { type: "string" },
+                    description: { type: "string" },
+                    isInitial: { type: "boolean" },
+                    properties: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          name: { type: "string" },
+                          type: { type: "string" },
+                          required: { type: "boolean" },
+                        },
+                      },
+                    },
+                  },
+                },
+              ],
+            },
+            description: "BLoC states (strings or full config objects)",
+          },
+          useCubit: {
+            type: "boolean",
+            description: "Use Cubit instead of BLoC (simpler, no events)",
+          },
+          useEquatable: {
+            type: "boolean",
+            description: "Use Equatable for state/event comparison",
+          },
+          useFreezed: {
+            type: "boolean",
+            description: "Use Freezed for immutable classes",
+          },
+          description: {
+            type: "string",
+            description: "BLoC description",
+          },
+        },
+        required: ["projectId", "name", "events", "states"],
+      },
+    },
+    {
+      name: "state_generate_feature",
+      description: "Generate a complete feature with state, repository, and model",
+      inputSchema: {
+        type: "object",
+        properties: {
+          projectId: {
+            type: "string",
+            description: "Project ID",
+          },
+          name: {
+            type: "string",
+            description: "Feature name (snake_case, e.g., 'user_profile')",
+          },
+          stateType: {
+            type: "string",
+            enum: ["riverpod", "bloc", "provider"],
+            description: "State management approach",
+          },
+          operations: {
+            type: "array",
+            items: {
+              type: "string",
+              enum: ["create", "read", "update", "delete", "list"],
+            },
+            description: "CRUD operations to generate",
+          },
+          hasModel: {
+            type: "boolean",
+            description: "Generate model class",
+          },
+          hasRepository: {
+            type: "boolean",
+            description: "Generate repository pattern",
+          },
+          hasUI: {
+            type: "boolean",
+            description: "Generate UI widget",
+          },
+          offlineEnabled: {
+            type: "boolean",
+            description: "Enable offline sync for this feature",
+          },
+          description: {
+            type: "string",
+            description: "Feature description",
+          },
+        },
+        required: ["projectId", "name"],
+      },
+    },
+    {
+      name: "state_configure_offline_sync",
+      description: "Configure offline sync settings for state management",
+      inputSchema: {
+        type: "object",
+        properties: {
+          projectId: {
+            type: "string",
+            description: "Project ID",
+          },
+          enabled: {
+            type: "boolean",
+            description: "Enable offline sync",
+          },
+          strategy: {
+            type: "string",
+            enum: ["manual", "auto", "periodic"],
+            description: "Sync strategy",
+          },
+          conflictResolution: {
+            type: "string",
+            enum: ["lastWrite", "serverWins", "clientWins", "merge"],
+            description: "Conflict resolution strategy",
+          },
+          retryAttempts: {
+            type: "number",
+            description: "Number of retry attempts",
+          },
+          retryDelay: {
+            type: "number",
+            description: "Delay between retries in milliseconds",
+          },
+          periodicInterval: {
+            type: "number",
+            description: "Sync interval in seconds (for periodic strategy)",
+          },
+          queuePersistence: {
+            type: "boolean",
+            description: "Persist sync queue to storage",
+          },
+        },
+        required: ["projectId"],
+      },
+    },
+
+    // ===== SECURITY TOOLS (DIRECT ACCESS) =====
+    {
+      name: "security_enable_encryption",
+      description: "Enable encryption for data at rest with configurable algorithm and key derivation",
+      inputSchema: {
+        type: "object",
+        properties: {
+          projectId: {
+            type: "string",
+            description: "Project ID",
+          },
+          algorithm: {
+            type: "string",
+            enum: ["AES-256-GCM", "ChaCha20-Poly1305"],
+            description: "Encryption algorithm",
+          },
+          keyDerivation: {
+            type: "string",
+            enum: ["PBKDF2", "Argon2"],
+            description: "Key derivation function",
+          },
+          iterations: {
+            type: "number",
+            description: "Iterations for PBKDF2 (default: 100000)",
+          },
+          keyLength: {
+            type: "number",
+            description: "Key length in bytes (default: 32)",
+          },
+          saltLength: {
+            type: "number",
+            description: "Salt length in bytes (default: 16)",
+          },
+          memoryCost: {
+            type: "number",
+            description: "Memory cost for Argon2 in KB",
+          },
+          encryptDatabase: {
+            type: "boolean",
+            description: "Encrypt the Drift database",
+          },
+          encryptPreferences: {
+            type: "boolean",
+            description: "Encrypt shared preferences",
+          },
+          biometricProtection: {
+            type: "boolean",
+            description: "Enable biometric protection for key access",
+          },
+        },
+        required: ["projectId"],
+      },
+    },
+    {
+      name: "security_add_validation",
+      description: "Add input validation rules to prevent injection attacks",
+      inputSchema: {
+        type: "object",
+        properties: {
+          projectId: {
+            type: "string",
+            description: "Project ID",
+          },
+          name: {
+            type: "string",
+            description: "Validation rule name (snake_case)",
+          },
+          type: {
+            type: "string",
+            enum: ["string", "email", "phone", "url", "number", "custom"],
+            description: "Validation type",
+          },
+          pattern: {
+            type: "string",
+            description: "Custom regex pattern for validation",
+          },
+          minLength: {
+            type: "number",
+            description: "Minimum input length",
+          },
+          maxLength: {
+            type: "number",
+            description: "Maximum input length",
+          },
+          sanitize: {
+            type: "boolean",
+            description: "Enable input sanitization",
+          },
+          preventSqlInjection: {
+            type: "boolean",
+            description: "Enable SQL injection prevention",
+          },
+          xssProtection: {
+            type: "boolean",
+            description: "Enable XSS protection",
+          },
+          errorMessage: {
+            type: "string",
+            description: "Custom error message",
+          },
+        },
+        required: ["projectId", "name"],
+      },
+    },
+    {
+      name: "security_audit",
+      description: "Run a security audit on the project to identify vulnerabilities",
+      inputSchema: {
+        type: "object",
+        properties: {
+          projectId: {
+            type: "string",
+            description: "Project ID",
+          },
+          severity: {
+            type: "string",
+            enum: ["all", "critical", "high", "medium", "low"],
+            description: "Minimum severity level to include",
+          },
+          checks: {
+            type: "array",
+            items: { type: "string" },
+            description: "Specific security checks to run (default: all)",
+          },
+          generateReport: {
+            type: "boolean",
+            description: "Generate a detailed report",
+          },
+          includeRecommendations: {
+            type: "boolean",
+            description: "Include security recommendations",
+          },
+        },
+        required: ["projectId"],
+      },
+    },
+    {
+      name: "security_classify_data",
+      description: "Classify data with sensitivity levels and handling requirements",
+      inputSchema: {
+        type: "object",
+        properties: {
+          projectId: {
+            type: "string",
+            description: "Project ID",
+          },
+          name: {
+            type: "string",
+            description: "Data classification name",
+          },
+          sensitivity: {
+            type: "string",
+            enum: ["public", "internal", "confidential", "restricted"],
+            description: "Data sensitivity level",
+          },
+          encryptionRequired: {
+            type: "boolean",
+            description: "Whether encryption is required",
+          },
+          auditRequired: {
+            type: "boolean",
+            description: "Whether audit logging is required",
+          },
+          retentionPolicy: {
+            type: "string",
+            description: "Data retention policy",
+          },
+          handlingInstructions: {
+            type: "string",
+            description: "Special handling instructions",
+          },
+        },
+        required: ["projectId", "name", "sensitivity"],
+      },
+    },
   ];
 }
 
