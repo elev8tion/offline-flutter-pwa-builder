@@ -1,0 +1,30 @@
+
+Drift templates  
+1. REPOSITORY_TEMPLATE - Repository pattern abstracting DAOs with caching layer
+  2. CONFLICT_RESOLUTION_TEMPLATE - Merge strategies for sync conflicts (last-write-wins, manual, custom)
+  3. BATCH_OPERATIONS_TEMPLATE - Bulk insert/update/delete with transaction support
+  4. OFFLINE_INDICATOR_TEMPLATE - UI widget showing connectivity and pending sync count
+  5. BACKGROUND_SYNC_TEMPLATE - Service worker / isolate for periodic background sync
+  6. DATA_EXPORT_IMPORT_TEMPLATE - Backup/restore functionality (JSON, CSV)
+  7. PAGINATION_TEMPLATE - Cursor and offset-based pagination for large datasets
+  8. FULL_TEXT_SEARCH_TEMPLATE - FTS5 virtual table setup for search
+  9. AUDIT_LOG_TEMPLATE - Track all data changes with timestamps and user info
+  10. OPTIMISTIC_UPDATE_TEMPLATE - Immediate UI updates with rollback on sync failure
+  11. RELATIONSHIP_TEMPLATE - Join queries and nested object hydration
+  12. DATA_SEEDER_TEMPLATE - Initial/demo data population for development
+13. SCHEMA_VALIDATOR_TEMPLATE - Runtime data validation before insert/update
+  14. RETRY_POLICY_TEMPLATE - Exponential backoff and retry strategies for failed syncs
+  15. DATA_COMPRESSION_TEMPLATE - Compress large text/blob fields for storage efficiency
+  16. CHANGE_NOTIFIER_TEMPLATE - Event bus for cross-component data change notifications
+  17. LAZY_LOADING_TEMPLATE - On-demand loading for related entities
+  18. CACHE_TTL_TEMPLATE - Time-based cache expiration and refresh
+  19. OFFLINE_QUEUE_PRIORITY_TEMPLATE - Priority-based sync queue (critical vs background)
+  20. DATA_ANONYMIZATION_TEMPLATE - GDPR compliance, data masking, user data deletion
+  21. MULTI_TENANT_TEMPLATE - Isolated data per user/organization
+  22. ATTACHMENT_HANDLER_TEMPLATE - Blob/file storage with offline caching
+  23. QUERY_CACHE_TEMPLATE - Memoized query results with invalidation
+  24. DATABASE_HEALTH_CHECK_TEMPLATE - Integrity checks, vacuum, size monitoring
+  25. VERSIONED_ENTITY_TEMPLATE - Entity versioning for conflict detection
+  26. PARTIAL_SYNC_TEMPLATE - Sync only changed fields, not entire records
+  27. OFFLINE_ANALYTICS_TEMPLATE - Queue analytics events for batch upload
+  28. DATA_ARCHIVAL_TEMPLATE - Move old records to archive tables
