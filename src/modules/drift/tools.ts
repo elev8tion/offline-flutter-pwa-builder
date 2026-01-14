@@ -73,6 +73,137 @@ export const RunCodegenInputSchema = z.object({
 });
 
 // ============================================================================
+// TIER 1: CRITICAL OFFLINE FEATURES - ZOD SCHEMAS
+// ============================================================================
+
+export const ConfigureConflictResolutionInputSchema = z.object({
+  projectId: z.string().describe("Project ID"),
+  strategy: z.enum(["serverWins", "clientWins", "lastWriteWins", "merge", "manual"])
+    .describe("Default conflict resolution strategy"),
+  tableStrategies: z.record(z.enum(["serverWins", "clientWins", "lastWriteWins", "merge", "manual"]))
+    .optional().describe("Per-table strategy overrides"),
+  fieldStrategies: z.record(z.enum(["serverWins", "clientWins"]))
+    .optional().describe("Per-field strategy overrides (format: 'table.field')"),
+});
+
+export const ConfigureBackgroundSyncInputSchema = z.object({
+  projectId: z.string().describe("Project ID"),
+  intervalSeconds: z.number().min(10).max(3600).default(60)
+    .describe("Sync interval in seconds"),
+  maxRetries: z.number().min(1).max(10).default(3)
+    .describe("Maximum retry attempts per operation"),
+  batchSize: z.number().min(1).max(500).default(50)
+    .describe("Number of items to sync per batch"),
+  syncOnConnect: z.boolean().default(true)
+    .describe("Trigger sync when connection is restored"),
+  priorityTables: z.array(z.string()).optional()
+    .describe("Tables to sync first"),
+});
+
+export const ConfigureOfflineIndicatorInputSchema = z.object({
+  projectId: z.string().describe("Project ID"),
+  showBanner: z.boolean().default(true)
+    .describe("Show offline banner"),
+  showSyncProgress: z.boolean().default(true)
+    .describe("Show sync progress in banner"),
+  bannerPosition: z.enum(["top", "bottom"]).default("top")
+    .describe("Position of the offline banner"),
+  customMessages: z.object({
+    offline: z.string().optional(),
+    syncing: z.string().optional(),
+    pending: z.string().optional(),
+  }).optional().describe("Custom banner messages"),
+});
+
+export const ConfigureOptimisticUpdatesInputSchema = z.object({
+  projectId: z.string().describe("Project ID"),
+  enabled: z.boolean().default(true)
+    .describe("Enable optimistic updates"),
+  confirmTimeoutSeconds: z.number().min(5).max(120).default(30)
+    .describe("Timeout for confirming updates"),
+  autoRollbackOnError: z.boolean().default(true)
+    .describe("Automatically rollback on server error"),
+  tables: z.array(z.string()).optional()
+    .describe("Tables to enable optimistic updates for"),
+});
+
+export const ConfigureRetryPolicyInputSchema = z.object({
+  projectId: z.string().describe("Project ID"),
+  strategy: z.enum(["fixed", "exponentialBackoff", "linearBackoff", "fibonacciBackoff"])
+    .default("exponentialBackoff").describe("Retry strategy"),
+  maxRetries: z.number().min(1).max(20).default(5)
+    .describe("Maximum number of retry attempts"),
+  initialDelaySeconds: z.number().min(0.1).max(60).default(1)
+    .describe("Initial delay between retries in seconds"),
+  maxDelaySeconds: z.number().min(1).max(600).default(60)
+    .describe("Maximum delay between retries in seconds"),
+  addJitter: z.boolean().default(true)
+    .describe("Add randomness to retry delays"),
+});
+
+// ============================================================================
+// TIER 2: PERFORMANCE & SCALABILITY - ZOD SCHEMAS
+// ============================================================================
+
+export const ConfigurePaginationInputSchema = z.object({
+  projectId: z.string().describe("Project ID"),
+  mode: z.enum(["offset", "cursor", "keyset"]).default("offset")
+    .describe("Pagination mode"),
+  defaultPageSize: z.number().min(5).max(200).default(20)
+    .describe("Default number of items per page"),
+  maxPageSize: z.number().min(10).max(500).default(100)
+    .describe("Maximum allowed page size"),
+});
+
+export const ConfigureLazyLoadingInputSchema = z.object({
+  projectId: z.string().describe("Project ID"),
+  enabled: z.boolean().default(true)
+    .describe("Enable lazy loading"),
+  pageSize: z.number().min(5).max(100).default(20)
+    .describe("Number of items to load per request"),
+  cacheForMinutes: z.number().min(1).max(60).optional()
+    .describe("How long to cache lazy-loaded items"),
+  preloadDistance: z.number().min(1).max(10).default(3)
+    .describe("Number of pages to preload ahead"),
+});
+
+export const ConfigureQueryCacheInputSchema = z.object({
+  projectId: z.string().describe("Project ID"),
+  enabled: z.boolean().default(true)
+    .describe("Enable query caching"),
+  maxSize: z.number().min(10).max(10000).default(1000)
+    .describe("Maximum number of cached queries"),
+  defaultTtlMinutes: z.number().min(1).max(1440).default(5)
+    .describe("Default cache TTL in minutes"),
+  evictionPolicy: z.enum(["lru", "lfu", "fifo", "ttlOnly"]).default("lru")
+    .describe("Cache eviction policy"),
+});
+
+export const ConfigureBatchOperationsInputSchema = z.object({
+  projectId: z.string().describe("Project ID"),
+  batchSize: z.number().min(10).max(1000).default(100)
+    .describe("Number of items per batch"),
+  useTransaction: z.boolean().default(true)
+    .describe("Wrap batches in transactions"),
+  stopOnError: z.boolean().default(false)
+    .describe("Stop processing on first error"),
+  delayBetweenBatchesMs: z.number().min(0).max(5000).default(0)
+    .describe("Delay between batches in milliseconds"),
+});
+
+export const ConfigureDataCompressionInputSchema = z.object({
+  projectId: z.string().describe("Project ID"),
+  enabled: z.boolean().default(true)
+    .describe("Enable data compression"),
+  algorithm: z.enum(["gzip", "zlib"]).default("gzip")
+    .describe("Compression algorithm"),
+  level: z.enum(["none", "fast", "low", "medium", "high"]).default("medium")
+    .describe("Compression level"),
+  minSizeBytes: z.number().min(0).max(100000).default(1024)
+    .describe("Minimum data size to compress (bytes)"),
+});
+
+// ============================================================================
 // TOOL DEFINITIONS
 // ============================================================================
 
@@ -222,6 +353,248 @@ export const DRIFT_TOOLS: Tool[] = [
       required: ["projectId"],
     },
   },
+
+  // ===== TIER 1: CRITICAL OFFLINE FEATURES =====
+  {
+    name: "drift_configure_conflict_resolution",
+    description: "Configure conflict resolution strategy for syncing offline changes with server data.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", description: "Project ID" },
+        strategy: {
+          type: "string",
+          enum: ["serverWins", "clientWins", "lastWriteWins", "merge", "manual"],
+          description: "Default conflict resolution strategy",
+        },
+        tableStrategies: {
+          type: "object",
+          additionalProperties: {
+            type: "string",
+            enum: ["serverWins", "clientWins", "lastWriteWins", "merge", "manual"],
+          },
+          description: "Per-table strategy overrides",
+        },
+        fieldStrategies: {
+          type: "object",
+          additionalProperties: {
+            type: "string",
+            enum: ["serverWins", "clientWins"],
+          },
+          description: "Per-field strategy overrides (format: 'table.field')",
+        },
+      },
+      required: ["projectId", "strategy"],
+    },
+  },
+  {
+    name: "drift_configure_background_sync",
+    description: "Configure background synchronization service for offline data.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", description: "Project ID" },
+        intervalSeconds: {
+          type: "number",
+          description: "Sync interval in seconds (10-3600)",
+          default: 60,
+        },
+        maxRetries: {
+          type: "number",
+          description: "Maximum retry attempts (1-10)",
+          default: 3,
+        },
+        batchSize: {
+          type: "number",
+          description: "Items per sync batch (1-500)",
+          default: 50,
+        },
+        syncOnConnect: {
+          type: "boolean",
+          description: "Sync when connection is restored",
+          default: true,
+        },
+        priorityTables: {
+          type: "array",
+          items: { type: "string" },
+          description: "Tables to sync first",
+        },
+      },
+      required: ["projectId"],
+    },
+  },
+  {
+    name: "drift_configure_offline_indicator",
+    description: "Configure UI components for offline status indication.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", description: "Project ID" },
+        showBanner: { type: "boolean", description: "Show offline banner", default: true },
+        showSyncProgress: { type: "boolean", description: "Show sync progress", default: true },
+        bannerPosition: {
+          type: "string",
+          enum: ["top", "bottom"],
+          description: "Banner position",
+          default: "top",
+        },
+        customMessages: {
+          type: "object",
+          properties: {
+            offline: { type: "string" },
+            syncing: { type: "string" },
+            pending: { type: "string" },
+          },
+          description: "Custom banner messages",
+        },
+      },
+      required: ["projectId"],
+    },
+  },
+  {
+    name: "drift_configure_optimistic_updates",
+    description: "Configure optimistic UI updates with rollback support.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", description: "Project ID" },
+        enabled: { type: "boolean", description: "Enable optimistic updates", default: true },
+        confirmTimeoutSeconds: {
+          type: "number",
+          description: "Timeout for confirming updates (5-120)",
+          default: 30,
+        },
+        autoRollbackOnError: {
+          type: "boolean",
+          description: "Auto rollback on server error",
+          default: true,
+        },
+        tables: {
+          type: "array",
+          items: { type: "string" },
+          description: "Tables to enable optimistic updates for",
+        },
+      },
+      required: ["projectId"],
+    },
+  },
+  {
+    name: "drift_configure_retry_policy",
+    description: "Configure retry policies for failed sync operations.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", description: "Project ID" },
+        strategy: {
+          type: "string",
+          enum: ["fixed", "exponentialBackoff", "linearBackoff", "fibonacciBackoff"],
+          description: "Retry strategy",
+          default: "exponentialBackoff",
+        },
+        maxRetries: { type: "number", description: "Max retry attempts (1-20)", default: 5 },
+        initialDelaySeconds: { type: "number", description: "Initial delay (0.1-60)", default: 1 },
+        maxDelaySeconds: { type: "number", description: "Max delay (1-600)", default: 60 },
+        addJitter: { type: "boolean", description: "Add randomness to delays", default: true },
+      },
+      required: ["projectId"],
+    },
+  },
+
+  // ===== TIER 2: PERFORMANCE & SCALABILITY =====
+  {
+    name: "drift_configure_pagination",
+    description: "Configure pagination for large datasets.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", description: "Project ID" },
+        mode: {
+          type: "string",
+          enum: ["offset", "cursor", "keyset"],
+          description: "Pagination mode",
+          default: "offset",
+        },
+        defaultPageSize: { type: "number", description: "Default page size (5-200)", default: 20 },
+        maxPageSize: { type: "number", description: "Maximum page size (10-500)", default: 100 },
+      },
+      required: ["projectId"],
+    },
+  },
+  {
+    name: "drift_configure_lazy_loading",
+    description: "Configure lazy loading for related entities and large datasets.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", description: "Project ID" },
+        enabled: { type: "boolean", description: "Enable lazy loading", default: true },
+        pageSize: { type: "number", description: "Items per load (5-100)", default: 20 },
+        cacheForMinutes: { type: "number", description: "Cache duration (1-60)" },
+        preloadDistance: { type: "number", description: "Pages to preload (1-10)", default: 3 },
+      },
+      required: ["projectId"],
+    },
+  },
+  {
+    name: "drift_configure_query_cache",
+    description: "Configure in-memory query result caching.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", description: "Project ID" },
+        enabled: { type: "boolean", description: "Enable query caching", default: true },
+        maxSize: { type: "number", description: "Max cached queries (10-10000)", default: 1000 },
+        defaultTtlMinutes: { type: "number", description: "Default TTL (1-1440)", default: 5 },
+        evictionPolicy: {
+          type: "string",
+          enum: ["lru", "lfu", "fifo", "ttlOnly"],
+          description: "Eviction policy",
+          default: "lru",
+        },
+      },
+      required: ["projectId"],
+    },
+  },
+  {
+    name: "drift_configure_batch_operations",
+    description: "Configure batch insert, update, and delete operations.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", description: "Project ID" },
+        batchSize: { type: "number", description: "Items per batch (10-1000)", default: 100 },
+        useTransaction: { type: "boolean", description: "Wrap in transactions", default: true },
+        stopOnError: { type: "boolean", description: "Stop on first error", default: false },
+        delayBetweenBatchesMs: { type: "number", description: "Delay between batches (0-5000)", default: 0 },
+      },
+      required: ["projectId"],
+    },
+  },
+  {
+    name: "drift_configure_data_compression",
+    description: "Configure data compression for storage efficiency.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", description: "Project ID" },
+        enabled: { type: "boolean", description: "Enable compression", default: true },
+        algorithm: {
+          type: "string",
+          enum: ["gzip", "zlib"],
+          description: "Compression algorithm",
+          default: "gzip",
+        },
+        level: {
+          type: "string",
+          enum: ["none", "fast", "low", "medium", "high"],
+          description: "Compression level",
+          default: "medium",
+        },
+        minSizeBytes: { type: "number", description: "Minimum size to compress (0-100000)", default: 1024 },
+      },
+      required: ["projectId"],
+    },
+  },
 ];
 
 // ============================================================================
@@ -241,6 +614,7 @@ export async function handleDriftTool(
   ctx: DriftToolContext
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
   switch (name) {
+    // Original tools
     case "drift_add_table":
       return handleAddTable(args, ctx);
     case "drift_add_relation":
@@ -253,6 +627,28 @@ export async function handleDriftTool(
       return handleEnableEncryption(args, ctx);
     case "drift_run_codegen":
       return handleRunCodegen(args, ctx);
+    // Tier 1: Critical Offline Features
+    case "drift_configure_conflict_resolution":
+      return handleConfigureConflictResolution(args, ctx);
+    case "drift_configure_background_sync":
+      return handleConfigureBackgroundSync(args, ctx);
+    case "drift_configure_offline_indicator":
+      return handleConfigureOfflineIndicator(args, ctx);
+    case "drift_configure_optimistic_updates":
+      return handleConfigureOptimisticUpdates(args, ctx);
+    case "drift_configure_retry_policy":
+      return handleConfigureRetryPolicy(args, ctx);
+    // Tier 2: Performance & Scalability
+    case "drift_configure_pagination":
+      return handleConfigurePagination(args, ctx);
+    case "drift_configure_lazy_loading":
+      return handleConfigureLazyLoading(args, ctx);
+    case "drift_configure_query_cache":
+      return handleConfigureQueryCache(args, ctx);
+    case "drift_configure_batch_operations":
+      return handleConfigureBatchOperations(args, ctx);
+    case "drift_configure_data_compression":
+      return handleConfigureDataCompression(args, ctx);
     default:
       throw new Error(`Unknown drift tool: ${name}`);
   }
@@ -559,6 +955,584 @@ This will generate:
 Required dev dependencies:
   build_runner: ^2.4.0
   drift_dev: ^2.14.0`,
+      },
+    ],
+  };
+}
+
+// ============================================================================
+// TIER 1: CRITICAL OFFLINE FEATURES - HANDLERS
+// ============================================================================
+
+async function handleConfigureConflictResolution(
+  args: Record<string, unknown>,
+  ctx: DriftToolContext
+): Promise<{ content: Array<{ type: "text"; text: string }> }> {
+  const input = ConfigureConflictResolutionInputSchema.parse(args);
+
+  const project = ctx.getProject(input.projectId);
+  if (!project) {
+    throw new Error(`Project not found: ${input.projectId}`);
+  }
+
+  const config = ctx.getDriftConfig(input.projectId);
+  if (!config) {
+    throw new Error("Drift module not installed on this project");
+  }
+
+  // Update conflict resolution config
+  const conflictConfig = {
+    strategy: input.strategy,
+    tableStrategies: input.tableStrategies || {},
+    fieldStrategies: input.fieldStrategies || {},
+  };
+
+  ctx.updateDriftConfig(input.projectId, {
+    ...config,
+    conflictResolution: conflictConfig,
+  } as Partial<DriftConfig>);
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: `Conflict resolution configured for project: ${project.name}
+
+Default Strategy: ${input.strategy}
+${Object.keys(input.tableStrategies || {}).length > 0 ? `Table Overrides: ${JSON.stringify(input.tableStrategies, null, 2)}` : ""}
+${Object.keys(input.fieldStrategies || {}).length > 0 ? `Field Overrides: ${JSON.stringify(input.fieldStrategies, null, 2)}` : ""}
+
+Generated files:
+  - lib/core/sync/conflict_resolver.dart
+
+Strategies:
+  - serverWins: Server data always takes precedence
+  - clientWins: Local data always takes precedence
+  - lastWriteWins: Most recent timestamp wins
+  - merge: Intelligently merge non-conflicting fields
+  - manual: Flag for user intervention`,
+      },
+    ],
+  };
+}
+
+async function handleConfigureBackgroundSync(
+  args: Record<string, unknown>,
+  ctx: DriftToolContext
+): Promise<{ content: Array<{ type: "text"; text: string }> }> {
+  const input = ConfigureBackgroundSyncInputSchema.parse(args);
+
+  const project = ctx.getProject(input.projectId);
+  if (!project) {
+    throw new Error(`Project not found: ${input.projectId}`);
+  }
+
+  const config = ctx.getDriftConfig(input.projectId);
+  if (!config) {
+    throw new Error("Drift module not installed on this project");
+  }
+
+  // Update sync config
+  const syncConfig = {
+    intervalSeconds: input.intervalSeconds ?? 60,
+    maxRetries: input.maxRetries ?? 3,
+    batchSize: input.batchSize ?? 50,
+    syncOnConnect: input.syncOnConnect ?? true,
+    priorityTables: input.priorityTables || [],
+  };
+
+  ctx.updateDriftConfig(input.projectId, {
+    ...config,
+    sync: syncConfig,
+  } as Partial<DriftConfig>);
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: `Background sync configured for project: ${project.name}
+
+Settings:
+  - Sync Interval: ${syncConfig.intervalSeconds} seconds
+  - Max Retries: ${syncConfig.maxRetries}
+  - Batch Size: ${syncConfig.batchSize}
+  - Sync on Connect: ${syncConfig.syncOnConnect}
+  - Priority Tables: ${syncConfig.priorityTables.length > 0 ? syncConfig.priorityTables.join(", ") : "None"}
+
+Generated files:
+  - lib/core/sync/background_sync_service.dart
+
+Required dependencies:
+  - connectivity_plus: ^5.0.0`,
+      },
+    ],
+  };
+}
+
+async function handleConfigureOfflineIndicator(
+  args: Record<string, unknown>,
+  ctx: DriftToolContext
+): Promise<{ content: Array<{ type: "text"; text: string }> }> {
+  const input = ConfigureOfflineIndicatorInputSchema.parse(args);
+
+  const project = ctx.getProject(input.projectId);
+  if (!project) {
+    throw new Error(`Project not found: ${input.projectId}`);
+  }
+
+  const config = ctx.getDriftConfig(input.projectId);
+  if (!config) {
+    throw new Error("Drift module not installed on this project");
+  }
+
+  // Update offline indicator config
+  const indicatorConfig = {
+    showBanner: input.showBanner ?? true,
+    showSyncProgress: input.showSyncProgress ?? true,
+    bannerPosition: input.bannerPosition ?? "top",
+    customMessages: input.customMessages || {},
+  };
+
+  ctx.updateDriftConfig(input.projectId, {
+    ...config,
+    offlineIndicator: indicatorConfig,
+  } as Partial<DriftConfig>);
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: `Offline indicator configured for project: ${project.name}
+
+Settings:
+  - Show Banner: ${indicatorConfig.showBanner}
+  - Show Sync Progress: ${indicatorConfig.showSyncProgress}
+  - Banner Position: ${indicatorConfig.bannerPosition}
+  - Custom Messages: ${Object.keys(indicatorConfig.customMessages).length > 0 ? "Yes" : "Default"}
+
+Generated files:
+  - lib/core/ui/offline_indicator.dart
+
+Components:
+  - OfflineBanner: Banner widget for offline status
+  - ConnectionQualityIndicator: Connection quality icon
+  - SyncStatusIndicator: Sync progress widget
+  - ConnectivityMonitor: State management for connectivity
+
+Required dependencies:
+  - connectivity_plus: ^5.0.0`,
+      },
+    ],
+  };
+}
+
+async function handleConfigureOptimisticUpdates(
+  args: Record<string, unknown>,
+  ctx: DriftToolContext
+): Promise<{ content: Array<{ type: "text"; text: string }> }> {
+  const input = ConfigureOptimisticUpdatesInputSchema.parse(args);
+
+  const project = ctx.getProject(input.projectId);
+  if (!project) {
+    throw new Error(`Project not found: ${input.projectId}`);
+  }
+
+  const config = ctx.getDriftConfig(input.projectId);
+  if (!config) {
+    throw new Error("Drift module not installed on this project");
+  }
+
+  // Update optimistic updates config
+  const optimisticConfig = {
+    enabled: input.enabled ?? true,
+    confirmTimeoutSeconds: input.confirmTimeoutSeconds ?? 30,
+    autoRollbackOnError: input.autoRollbackOnError ?? true,
+    tables: input.tables || [],
+  };
+
+  ctx.updateDriftConfig(input.projectId, {
+    ...config,
+    optimisticUpdates: optimisticConfig,
+  } as Partial<DriftConfig>);
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: `Optimistic updates configured for project: ${project.name}
+
+Settings:
+  - Enabled: ${optimisticConfig.enabled}
+  - Confirm Timeout: ${optimisticConfig.confirmTimeoutSeconds} seconds
+  - Auto Rollback: ${optimisticConfig.autoRollbackOnError}
+  - Tables: ${optimisticConfig.tables.length > 0 ? optimisticConfig.tables.join(", ") : "All"}
+
+Generated files:
+  - lib/core/sync/optimistic_update_manager.dart
+
+Features:
+  - Instant UI updates before server confirmation
+  - Automatic rollback on failure
+  - Pending update tracking
+  - OptimisticMixin for repositories`,
+      },
+    ],
+  };
+}
+
+async function handleConfigureRetryPolicy(
+  args: Record<string, unknown>,
+  ctx: DriftToolContext
+): Promise<{ content: Array<{ type: "text"; text: string }> }> {
+  const input = ConfigureRetryPolicyInputSchema.parse(args);
+
+  const project = ctx.getProject(input.projectId);
+  if (!project) {
+    throw new Error(`Project not found: ${input.projectId}`);
+  }
+
+  const config = ctx.getDriftConfig(input.projectId);
+  if (!config) {
+    throw new Error("Drift module not installed on this project");
+  }
+
+  // Update retry policy config
+  const retryConfig = {
+    strategy: input.strategy ?? "exponentialBackoff",
+    maxRetries: input.maxRetries ?? 5,
+    initialDelaySeconds: input.initialDelaySeconds ?? 1,
+    maxDelaySeconds: input.maxDelaySeconds ?? 60,
+    addJitter: input.addJitter ?? true,
+  };
+
+  ctx.updateDriftConfig(input.projectId, {
+    ...config,
+    retry: retryConfig,
+  } as Partial<DriftConfig>);
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: `Retry policy configured for project: ${project.name}
+
+Settings:
+  - Strategy: ${retryConfig.strategy}
+  - Max Retries: ${retryConfig.maxRetries}
+  - Initial Delay: ${retryConfig.initialDelaySeconds} seconds
+  - Max Delay: ${retryConfig.maxDelaySeconds} seconds
+  - Add Jitter: ${retryConfig.addJitter}
+
+Generated files:
+  - lib/core/sync/retry_policy.dart
+
+Strategies:
+  - fixed: Same delay between retries
+  - exponentialBackoff: Delay doubles each retry
+  - linearBackoff: Delay increases linearly
+  - fibonacciBackoff: Delay follows Fibonacci sequence
+
+Presets available:
+  - RetryPresets.aggressive (10 retries, fast)
+  - RetryPresets.conservative (3 retries, slower)
+  - RetryPresets.quick (5 retries, 200ms delay)
+  - RetryPresets.backgroundSync (5 retries, up to 5 min)`,
+      },
+    ],
+  };
+}
+
+// ============================================================================
+// TIER 2: PERFORMANCE & SCALABILITY - HANDLERS
+// ============================================================================
+
+async function handleConfigurePagination(
+  args: Record<string, unknown>,
+  ctx: DriftToolContext
+): Promise<{ content: Array<{ type: "text"; text: string }> }> {
+  const input = ConfigurePaginationInputSchema.parse(args);
+
+  const project = ctx.getProject(input.projectId);
+  if (!project) {
+    throw new Error(`Project not found: ${input.projectId}`);
+  }
+
+  const config = ctx.getDriftConfig(input.projectId);
+  if (!config) {
+    throw new Error("Drift module not installed on this project");
+  }
+
+  // Update pagination config
+  const paginationConfig = {
+    mode: input.mode ?? "offset",
+    defaultPageSize: input.defaultPageSize ?? 20,
+    maxPageSize: input.maxPageSize ?? 100,
+  };
+
+  ctx.updateDriftConfig(input.projectId, {
+    ...config,
+    pagination: paginationConfig,
+  } as Partial<DriftConfig>);
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: `Pagination configured for project: ${project.name}
+
+Settings:
+  - Mode: ${paginationConfig.mode}
+  - Default Page Size: ${paginationConfig.defaultPageSize}
+  - Max Page Size: ${paginationConfig.maxPageSize}
+
+Generated files:
+  - lib/core/data/pagination.dart
+
+Modes:
+  - offset: Traditional OFFSET/LIMIT (simple, good for small datasets)
+  - cursor: Cursor-based pagination (better for real-time data)
+  - keyset: Keyset pagination (most efficient for large datasets)
+
+Components:
+  - Page<T>: Paginated result container
+  - PageRequest: Pagination request parameters
+  - PaginationManager: Core pagination logic
+  - InfiniteScrollController: UI controller for infinite scroll`,
+      },
+    ],
+  };
+}
+
+async function handleConfigureLazyLoading(
+  args: Record<string, unknown>,
+  ctx: DriftToolContext
+): Promise<{ content: Array<{ type: "text"; text: string }> }> {
+  const input = ConfigureLazyLoadingInputSchema.parse(args);
+
+  const project = ctx.getProject(input.projectId);
+  if (!project) {
+    throw new Error(`Project not found: ${input.projectId}`);
+  }
+
+  const config = ctx.getDriftConfig(input.projectId);
+  if (!config) {
+    throw new Error("Drift module not installed on this project");
+  }
+
+  // Update lazy loading config
+  const lazyConfig = {
+    enabled: input.enabled ?? true,
+    pageSize: input.pageSize ?? 20,
+    cacheForMinutes: input.cacheForMinutes,
+    preloadDistance: input.preloadDistance ?? 3,
+  };
+
+  ctx.updateDriftConfig(input.projectId, {
+    ...config,
+    lazyLoading: lazyConfig,
+  } as Partial<DriftConfig>);
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: `Lazy loading configured for project: ${project.name}
+
+Settings:
+  - Enabled: ${lazyConfig.enabled}
+  - Page Size: ${lazyConfig.pageSize}
+  - Cache Duration: ${lazyConfig.cacheForMinutes ? lazyConfig.cacheForMinutes + " minutes" : "No caching"}
+  - Preload Distance: ${lazyConfig.preloadDistance} pages
+
+Generated files:
+  - lib/core/data/lazy_loading.dart
+
+Components:
+  - Lazy<T>: Single lazy-loaded value
+  - LazyList<T>: On-demand list loading
+  - LazyRelation<T>: Lazy one-to-one relations
+  - LazyCollection<T>: Lazy one-to-many relations
+  - LazyLoadable mixin: Easy integration`,
+      },
+    ],
+  };
+}
+
+async function handleConfigureQueryCache(
+  args: Record<string, unknown>,
+  ctx: DriftToolContext
+): Promise<{ content: Array<{ type: "text"; text: string }> }> {
+  const input = ConfigureQueryCacheInputSchema.parse(args);
+
+  const project = ctx.getProject(input.projectId);
+  if (!project) {
+    throw new Error(`Project not found: ${input.projectId}`);
+  }
+
+  const config = ctx.getDriftConfig(input.projectId);
+  if (!config) {
+    throw new Error("Drift module not installed on this project");
+  }
+
+  // Update query cache config
+  const cacheConfig = {
+    enabled: input.enabled ?? true,
+    maxSize: input.maxSize ?? 1000,
+    defaultTtlMinutes: input.defaultTtlMinutes ?? 5,
+    evictionPolicy: input.evictionPolicy ?? "lru",
+  };
+
+  ctx.updateDriftConfig(input.projectId, {
+    ...config,
+    queryCache: cacheConfig,
+  } as Partial<DriftConfig>);
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: `Query cache configured for project: ${project.name}
+
+Settings:
+  - Enabled: ${cacheConfig.enabled}
+  - Max Size: ${cacheConfig.maxSize} entries
+  - Default TTL: ${cacheConfig.defaultTtlMinutes} minutes
+  - Eviction Policy: ${cacheConfig.evictionPolicy}
+
+Generated files:
+  - lib/core/data/query_cache.dart
+
+Eviction Policies:
+  - lru: Least Recently Used (default)
+  - lfu: Least Frequently Used
+  - fifo: First In First Out
+  - ttlOnly: Only expire by TTL
+
+Features:
+  - Automatic cache invalidation by table
+  - Tag-based invalidation
+  - Pattern-based invalidation
+  - Cache statistics tracking
+  - CachedQueries mixin for DAOs`,
+      },
+    ],
+  };
+}
+
+async function handleConfigureBatchOperations(
+  args: Record<string, unknown>,
+  ctx: DriftToolContext
+): Promise<{ content: Array<{ type: "text"; text: string }> }> {
+  const input = ConfigureBatchOperationsInputSchema.parse(args);
+
+  const project = ctx.getProject(input.projectId);
+  if (!project) {
+    throw new Error(`Project not found: ${input.projectId}`);
+  }
+
+  const config = ctx.getDriftConfig(input.projectId);
+  if (!config) {
+    throw new Error("Drift module not installed on this project");
+  }
+
+  // Update batch operations config
+  const batchConfig = {
+    batchSize: input.batchSize ?? 100,
+    useTransaction: input.useTransaction ?? true,
+    stopOnError: input.stopOnError ?? false,
+    delayBetweenBatchesMs: input.delayBetweenBatchesMs ?? 0,
+  };
+
+  ctx.updateDriftConfig(input.projectId, {
+    ...config,
+    batch: batchConfig,
+  } as Partial<DriftConfig>);
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: `Batch operations configured for project: ${project.name}
+
+Settings:
+  - Batch Size: ${batchConfig.batchSize} items
+  - Use Transactions: ${batchConfig.useTransaction}
+  - Stop on Error: ${batchConfig.stopOnError}
+  - Delay Between Batches: ${batchConfig.delayBetweenBatchesMs}ms
+
+Generated files:
+  - lib/core/data/batch_operations.dart
+
+Features:
+  - insertAll: Batch insert with progress
+  - updateAll: Batch update with progress
+  - upsertAll: Batch upsert (insert or update)
+  - deleteByIds: Batch delete by IDs
+  - Progress callbacks for UI
+  - Error tracking and reporting
+  - Table extensions for easy use`,
+      },
+    ],
+  };
+}
+
+async function handleConfigureDataCompression(
+  args: Record<string, unknown>,
+  ctx: DriftToolContext
+): Promise<{ content: Array<{ type: "text"; text: string }> }> {
+  const input = ConfigureDataCompressionInputSchema.parse(args);
+
+  const project = ctx.getProject(input.projectId);
+  if (!project) {
+    throw new Error(`Project not found: ${input.projectId}`);
+  }
+
+  const config = ctx.getDriftConfig(input.projectId);
+  if (!config) {
+    throw new Error("Drift module not installed on this project");
+  }
+
+  // Update compression config
+  const compressionConfig = {
+    enabled: input.enabled ?? true,
+    algorithm: input.algorithm ?? "gzip",
+    level: input.level ?? "medium",
+    minSizeBytes: input.minSizeBytes ?? 1024,
+  };
+
+  ctx.updateDriftConfig(input.projectId, {
+    ...config,
+    compression: compressionConfig,
+  } as Partial<DriftConfig>);
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: `Data compression configured for project: ${project.name}
+
+Settings:
+  - Enabled: ${compressionConfig.enabled}
+  - Algorithm: ${compressionConfig.algorithm}
+  - Level: ${compressionConfig.level}
+  - Min Size: ${compressionConfig.minSizeBytes} bytes
+
+Generated files:
+  - lib/core/data/data_compression.dart
+
+Features:
+  - Automatic compression for large text/blob fields
+  - Transparent compression/decompression
+  - Compression statistics tracking
+  - CompressedBlob wrapper for storage
+  - CompressedStringConverter for Drift
+
+Compression Levels:
+  - none: No compression (level 0)
+  - fast: Quick compression (level 1)
+  - low: Light compression (level 3)
+  - medium: Balanced (level 6)
+  - high: Maximum compression (level 9)`,
       },
     ],
   };

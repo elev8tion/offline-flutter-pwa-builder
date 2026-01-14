@@ -535,7 +535,19 @@ export async function handleToolCall(
     case "drift_generate_dao":
     case "drift_create_migration":
     case "drift_enable_encryption":
-    case "drift_run_codegen": {
+    case "drift_run_codegen":
+    // Tier 1: Critical Offline Features
+    case "drift_configure_conflict_resolution":
+    case "drift_configure_background_sync":
+    case "drift_configure_offline_indicator":
+    case "drift_configure_optimistic_updates":
+    case "drift_configure_retry_policy":
+    // Tier 2: Performance & Scalability
+    case "drift_configure_pagination":
+    case "drift_configure_lazy_loading":
+    case "drift_configure_query_cache":
+    case "drift_configure_batch_operations":
+    case "drift_configure_data_compression": {
       // Create drift tool context
       const driftCtx: DriftToolContext = {
         getProject: (id: string) => context.projectEngine.get(id),

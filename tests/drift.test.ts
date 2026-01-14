@@ -205,15 +205,29 @@ describe("Web Config Generation", () => {
 
 describe("Drift Tools", () => {
   test("should define all tools", () => {
-    expect(DRIFT_TOOLS.length).toBe(6);
+    // 6 original + 5 Tier 1 + 5 Tier 2 = 16 tools
+    expect(DRIFT_TOOLS.length).toBe(16);
 
     const toolNames = DRIFT_TOOLS.map(t => t.name);
+    // Original tools
     expect(toolNames).toContain("drift_add_table");
     expect(toolNames).toContain("drift_add_relation");
     expect(toolNames).toContain("drift_generate_dao");
     expect(toolNames).toContain("drift_create_migration");
     expect(toolNames).toContain("drift_enable_encryption");
     expect(toolNames).toContain("drift_run_codegen");
+    // Tier 1: Critical Offline Features
+    expect(toolNames).toContain("drift_configure_conflict_resolution");
+    expect(toolNames).toContain("drift_configure_background_sync");
+    expect(toolNames).toContain("drift_configure_offline_indicator");
+    expect(toolNames).toContain("drift_configure_optimistic_updates");
+    expect(toolNames).toContain("drift_configure_retry_policy");
+    // Tier 2: Performance & Scalability
+    expect(toolNames).toContain("drift_configure_pagination");
+    expect(toolNames).toContain("drift_configure_lazy_loading");
+    expect(toolNames).toContain("drift_configure_query_cache");
+    expect(toolNames).toContain("drift_configure_batch_operations");
+    expect(toolNames).toContain("drift_configure_data_compression");
   });
 
   test("drift_add_table should have correct schema", () => {
