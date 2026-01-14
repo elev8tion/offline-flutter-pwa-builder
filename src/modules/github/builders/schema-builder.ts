@@ -1,5 +1,9 @@
 import { AnalysisResult, RebuildSchema } from '../config.js';
 import type { ProjectDefinition } from '../../../core/types.js';
+import {
+  DriftTableSchema,
+  modelsToDriftSchemas,
+} from './drift-mapper.js';
 
 export interface RebuildOptions {
   keepModels?: boolean;
@@ -150,6 +154,17 @@ export async function createRebuildSchema(
     warnings.push(`Migrating ${analysis.models.length} models to Drift. This may require manual adjustments.`);
   }
 
+  // Generate Drift table schemas from models
+  let driftSchemas: DriftTableSchema[] | undefined;
+  if (addOfflineSupport && analysis.models.length > 0) {
+    try {
+      driftSchemas = modelsToDriftSchemas(analysis.models);
+      warnings.push(`Generated ${driftSchemas.length} Drift table schemas for offline storage`);
+    } catch (error) {
+      warnings.push(`Failed to generate Drift schemas: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
   return {
     projectDefinition: projectDefinition as any,
     migrations: {
@@ -160,6 +175,7 @@ export async function createRebuildSchema(
     generationPlan,
     preservedFiles,
     warnings,
+    driftSchemas,
   };
 }
 

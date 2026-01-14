@@ -9,6 +9,17 @@ import { RebuildSchema } from '../config.js';
 import * as fs from 'fs-extra';
 import * as path from 'path';
 import { execSync } from 'child_process';
+import {
+  generateDatabaseFile,
+  generateWasmConfig,
+  generateOpfsConfig,
+} from './database-generator.js';
+import {
+  generateMainDart,
+  generatePubspecWithDrift,
+  generateBuildYaml,
+} from './main-generator.js';
+import { DriftTableSchema } from './drift-mapper.js';
 
 export interface RebuildOptions {
   runFlutterCreate?: boolean;
@@ -26,6 +37,47 @@ export interface RebuildResult {
   warnings: string[];
   nextSteps: string[];
   error?: string;
+}
+
+/**
+ * Setup Drift database with tables, DAOs, and WASM/OPFS config
+ */
+async function setupDriftDatabase(
+  driftSchemas: DriftTableSchema[],
+  outputPath: string,
+  appName: string
+): Promise<void> {
+  if (!driftSchemas || driftSchemas.length === 0) {
+    return;
+  }
+
+  console.log(`[Drift] Setting up database with ${driftSchemas.length} tables...`);
+
+  // Generate database file with all tables and DAOs
+  await generateDatabaseFile(driftSchemas, outputPath);
+  console.log('[Drift] Generated app_database.dart');
+
+  // Generate WASM configuration for web
+  await generateWasmConfig(outputPath);
+  console.log('[Drift] Generated WASM configuration');
+
+  // Generate OPFS configuration
+  await generateOpfsConfig(outputPath);
+  console.log('[Drift] Generated OPFS configuration');
+
+  // Generate main.dart with database initialization
+  await generateMainDart(outputPath, appName, true);
+  console.log('[Drift] Generated main.dart with database initialization');
+
+  // Generate pubspec.yaml with Drift dependencies
+  await generatePubspecWithDrift(outputPath, appName, true);
+  console.log('[Drift] Generated pubspec.yaml with Drift dependencies');
+
+  // Generate build.yaml for code generation
+  await generateBuildYaml(outputPath);
+  console.log('[Drift] Generated build.yaml');
+
+  console.log('[Drift] Database setup complete!');
 }
 
 /**
@@ -66,7 +118,17 @@ export async function rebuildProject(
     // 5. Generate new code files
     const filesGenerated = await generateCodeFiles(outputPath, schema);
 
-    // 6. Run flutter create if requested
+    // 6. Setup Drift database if schemas are provided
+    if (schema.driftSchemas && schema.driftSchemas.length > 0) {
+      console.log('\n[Drift Integration] Setting up offline database...');
+      await setupDriftDatabase(
+        schema.driftSchemas,
+        outputPath,
+        schema.projectDefinition.name
+      );
+    }
+
+    // 7. Run flutter create if requested
     if (runFlutterCreate) {
       console.log('Running flutter create...');
       try {
@@ -79,7 +141,7 @@ export async function rebuildProject(
       }
     }
 
-    // 7. Run dart format if requested
+    // 8. Run dart format if requested
     if (formatCode) {
       console.log('Formatting code...');
       try {
@@ -92,12 +154,24 @@ export async function rebuildProject(
       }
     }
 
-    // 8. Generate tests if requested
+    // 9. Generate tests if requested
     if (generateTests) {
       await generateTestFiles(outputPath, schema);
     }
 
-    // 9. Return summary
+    // 10. Return summary
+    const hasDrift = schema.driftSchemas && schema.driftSchemas.length > 0;
+    const nextSteps = [
+      `cd ${outputPath}`,
+      runFlutterCreate ? 'flutter pub get' : 'flutter create . && flutter pub get',
+    ];
+
+    if (hasDrift) {
+      nextSteps.push('dart run build_runner build --delete-conflicting-outputs');
+    }
+
+    nextSteps.push('flutter run -d chrome');
+
     return {
       success: true,
       outputPath,
@@ -106,11 +180,7 @@ export async function rebuildProject(
       filesCopied,
       modulesInstalled: schema.projectDefinition.modules?.length || 0,
       warnings: schema.warnings,
-      nextSteps: [
-        `cd ${outputPath}`,
-        runFlutterCreate ? 'flutter pub get' : 'flutter create . && flutter pub get',
-        'flutter run -d chrome',
-      ],
+      nextSteps,
     };
   } catch (error) {
     return {
@@ -311,9 +381,11 @@ async function generateCodeFiles(
 ): Promise<number> {
   let count = 0;
 
-  // Generate main.dart
-  await generateMainDart(outputPath, schema);
-  count++;
+  // Generate main.dart (only if Drift is not being set up, as Drift setup will generate it)
+  if (!schema.driftSchemas || schema.driftSchemas.length === 0) {
+    await generateMainDartBasic(outputPath, schema);
+    count++;
+  }
 
   // Generate theme files
   if (schema.generationPlan.theme.length > 0) {
@@ -343,9 +415,9 @@ async function generateCodeFiles(
 }
 
 /**
- * Generate main.dart entry point
+ * Generate basic main.dart entry point (without Drift)
  */
-async function generateMainDart(
+async function generateMainDartBasic(
   outputPath: string,
   schema: RebuildSchema
 ): Promise<void> {

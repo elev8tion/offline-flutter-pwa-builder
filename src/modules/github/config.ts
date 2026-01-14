@@ -117,6 +117,7 @@ export interface RebuildSchema {
   };
   preservedFiles: string[];
   warnings: string[];
+  driftSchemas?: any[];
 }
 
 // ============================================================================
