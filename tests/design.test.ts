@@ -135,7 +135,7 @@ describe("Design Module", () => {
     it("should export design tools", () => {
       expect(DESIGN_TOOLS).toBeDefined();
       expect(Array.isArray(DESIGN_TOOLS)).toBe(true);
-      expect(DESIGN_TOOLS.length).toBe(9); // 3 original + 3 EDC tools + 3 glass component tools
+      expect(DESIGN_TOOLS.length).toBe(13); // 3 original + 3 EDC tools + 3 glass component tools + 4 visual effects tools
     });
 
     it("should have design_generate_theme tool", () => {
@@ -154,6 +154,30 @@ describe("Design Module", () => {
       const tool = DESIGN_TOOLS.find((t) => t.name === "design_generate_tokens");
       expect(tool).toBeDefined();
       expect(tool?.description?.toLowerCase()).toContain("token");
+    });
+
+    it("should have design_generate_shadows tool", () => {
+      const tool = DESIGN_TOOLS.find((t) => t.name === "design_generate_shadows");
+      expect(tool).toBeDefined();
+      expect(tool?.description?.toLowerCase()).toContain("shadow");
+    });
+
+    it("should have design_generate_text_shadows tool", () => {
+      const tool = DESIGN_TOOLS.find((t) => t.name === "design_generate_text_shadows");
+      expect(tool).toBeDefined();
+      expect(tool?.description?.toLowerCase()).toContain("text shadow");
+    });
+
+    it("should have design_generate_noise_overlay tool", () => {
+      const tool = DESIGN_TOOLS.find((t) => t.name === "design_generate_noise_overlay");
+      expect(tool).toBeDefined();
+      expect(tool?.description?.toLowerCase()).toContain("noise");
+    });
+
+    it("should have design_generate_light_simulation tool", () => {
+      const tool = DESIGN_TOOLS.find((t) => t.name === "design_generate_light_simulation");
+      expect(tool).toBeDefined();
+      expect(tool?.description?.toLowerCase()).toContain("light");
     });
 
     it("should have valid input schemas for all tools", () => {

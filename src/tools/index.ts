@@ -943,7 +943,11 @@ export async function handleToolCall(
     case "design_generate_wcag":
     case "design_generate_glass_card":
     case "design_generate_glass_button":
-    case "design_generate_glass_bottomsheet": {
+    case "design_generate_glass_bottomsheet":
+    case "design_generate_shadows":
+    case "design_generate_text_shadows":
+    case "design_generate_noise_overlay":
+    case "design_generate_light_simulation": {
       // Create Design tool context
       const designCtx: DesignToolContext = {
         getProject: (id: string) => context.projectEngine.get(id),

@@ -83,6 +83,90 @@ export interface DesignModuleConfig {
 }
 
 // ============================================================================
+// PHASE 3: VISUAL EFFECTS INTERFACES
+// ============================================================================
+
+// Shadow System
+export interface ShadowConfig {
+  alpha: number;
+  blur: number;
+  offsetX: number;
+  offsetY: number;
+}
+
+export interface ShadowSystemConfig {
+  glass: {
+    ambient: ShadowConfig;
+    definition: ShadowConfig;
+  };
+  card: {
+    ambient: ShadowConfig;
+    definition: ShadowConfig;
+  };
+  elevated: {
+    ambient: ShadowConfig;
+    definition: ShadowConfig;
+  };
+  primaryColor: string;
+}
+
+// Text Shadow System
+export interface TextShadowLevel {
+  offsetX: number;
+  offsetY: number;
+  blur: number;
+}
+
+export interface TextStyleConfig {
+  fontSize: number;
+  fontWeight: string;
+  color: string;
+  letterSpacing?: number;
+  lineHeight?: number;
+}
+
+export interface TextShadowConfig {
+  subtle: TextShadowLevel;
+  medium: TextShadowLevel;
+  strong: TextShadowLevel;
+  bold: TextShadowLevel;
+  styles: {
+    heading: TextStyleConfig;
+    subheading: TextStyleConfig;
+    body: TextStyleConfig & { lineHeight: number };
+    caption: TextStyleConfig;
+    display: TextStyleConfig;
+  };
+}
+
+// Noise Overlay System
+export interface NoiseOverlayConfig {
+  defaultOpacity: number;
+  defaultDensity: number;
+  seed: number;
+  particleSize: number;
+}
+
+// Light Simulation System
+export interface LightSimulationPreset {
+  intensity: number;
+  stopStart?: number;
+  stopEnd?: number;
+}
+
+export interface LightSimulationConfig {
+  defaultIntensity: number;
+  defaultStopStart: number;
+  defaultStopEnd: number;
+  presets: {
+    subtle: LightSimulationPreset;
+    strong: LightSimulationPreset;
+    extended: LightSimulationPreset;
+    short: LightSimulationPreset;
+  };
+}
+
+// ============================================================================
 // ZOD SCHEMAS
 // ============================================================================
 
@@ -149,6 +233,86 @@ export const DesignModuleConfigSchema = z.object({
   animations: z.array(AnimationConfigSchema),
   generateDesignTokens: z.boolean(),
   generateComponents: z.boolean(),
+});
+
+// ============================================================================
+// PHASE 3: VISUAL EFFECTS ZOD SCHEMAS
+// ============================================================================
+
+export const ShadowConfigSchema = z.object({
+  alpha: z.number().min(0).max(1),
+  blur: z.number().min(0),
+  offsetX: z.number(),
+  offsetY: z.number(),
+});
+
+export const ShadowSystemConfigSchema = z.object({
+  glass: z.object({
+    ambient: ShadowConfigSchema,
+    definition: ShadowConfigSchema,
+  }),
+  card: z.object({
+    ambient: ShadowConfigSchema,
+    definition: ShadowConfigSchema,
+  }),
+  elevated: z.object({
+    ambient: ShadowConfigSchema,
+    definition: ShadowConfigSchema,
+  }),
+  primaryColor: z.string(),
+});
+
+export const TextShadowLevelSchema = z.object({
+  offsetX: z.number(),
+  offsetY: z.number(),
+  blur: z.number().min(0),
+});
+
+export const TextStyleConfigSchema = z.object({
+  fontSize: z.number().positive(),
+  fontWeight: z.string(),
+  color: z.string(),
+  letterSpacing: z.number().optional(),
+  lineHeight: z.number().optional(),
+});
+
+export const TextShadowConfigSchema = z.object({
+  subtle: TextShadowLevelSchema,
+  medium: TextShadowLevelSchema,
+  strong: TextShadowLevelSchema,
+  bold: TextShadowLevelSchema,
+  styles: z.object({
+    heading: TextStyleConfigSchema,
+    subheading: TextStyleConfigSchema,
+    body: TextStyleConfigSchema.extend({ lineHeight: z.number() }),
+    caption: TextStyleConfigSchema,
+    display: TextStyleConfigSchema,
+  }),
+});
+
+export const NoiseOverlayConfigSchema = z.object({
+  defaultOpacity: z.number().min(0).max(1),
+  defaultDensity: z.number().min(0).max(1),
+  seed: z.number().int(),
+  particleSize: z.number().positive(),
+});
+
+export const LightSimulationPresetSchema = z.object({
+  intensity: z.number().min(0).max(1),
+  stopStart: z.number().min(0).max(1).optional(),
+  stopEnd: z.number().min(0).max(1).optional(),
+});
+
+export const LightSimulationConfigSchema = z.object({
+  defaultIntensity: z.number().min(0).max(1),
+  defaultStopStart: z.number().min(0).max(1),
+  defaultStopEnd: z.number().min(0).max(1),
+  presets: z.object({
+    subtle: LightSimulationPresetSchema,
+    strong: LightSimulationPresetSchema,
+    extended: LightSimulationPresetSchema,
+    short: LightSimulationPresetSchema,
+  }),
 });
 
 // ============================================================================

@@ -36,6 +36,10 @@ import {
   GlassContainerConfigSchema,
   GlassButtonConfigSchema,
   GlassBottomSheetConfigSchema,
+  ShadowSystemConfigSchema,
+  TextShadowConfigSchema,
+  NoiseOverlayConfigSchema,
+  LightSimulationConfigSchema,
 } from "./config.js";
 import {
   GLASS_CARD_SOURCE,
@@ -43,6 +47,22 @@ import {
 } from "./templates/glass_card_template.js";
 import { GLASS_BUTTON_SOURCE } from "./templates/glass_button_template.js";
 import { GLASS_BOTTOMSHEET_SOURCE } from "./templates/glass_bottomsheet_template.js";
+import {
+  SHADOW_SYSTEM_SOURCE,
+  DEFAULT_SHADOW_CONFIG,
+} from "./templates/shadow_system_template.js";
+import {
+  TEXT_SHADOW_SOURCE,
+  DEFAULT_TEXT_SHADOW_CONFIG,
+} from "./templates/text_shadow_template.js";
+import {
+  NOISE_OVERLAY_SOURCE,
+  DEFAULT_NOISE_CONFIG,
+} from "./templates/noise_overlay_template.js";
+import {
+  LIGHT_SIMULATION_SOURCE,
+  DEFAULT_LIGHT_CONFIG,
+} from "./templates/light_simulation_template.js";
 import Handlebars from "handlebars";
 
 // ============================================================================
@@ -111,6 +131,30 @@ export const GenerateGlassButtonInputSchema = z.object({
 export const GenerateGlassBottomSheetInputSchema = z.object({
   projectId: z.string().describe("Project ID"),
   config: GlassBottomSheetConfigSchema.optional().describe("Custom glass bottom sheet configuration"),
+});
+
+// ============================================================================
+// PHASE 3: VISUAL EFFECTS TOOL INPUT SCHEMAS
+// ============================================================================
+
+export const GenerateShadowSystemInputSchema = z.object({
+  projectId: z.string().describe("Project ID"),
+  config: ShadowSystemConfigSchema.optional().describe("Custom shadow system configuration"),
+});
+
+export const GenerateTextShadowInputSchema = z.object({
+  projectId: z.string().describe("Project ID"),
+  config: TextShadowConfigSchema.optional().describe("Custom text shadow configuration"),
+});
+
+export const GenerateNoiseOverlayInputSchema = z.object({
+  projectId: z.string().describe("Project ID"),
+  config: NoiseOverlayConfigSchema.optional().describe("Custom noise overlay configuration"),
+});
+
+export const GenerateLightSimulationInputSchema = z.object({
+  projectId: z.string().describe("Project ID"),
+  config: LightSimulationConfigSchema.optional().describe("Custom light simulation configuration"),
 });
 
 // ============================================================================
@@ -338,6 +382,171 @@ export const DESIGN_TOOLS: Tool[] = [
             defaultBlurStrength: { type: "number", description: "Blur strength (sigma)" },
             darkModeAlpha: { type: "number", description: "Dark mode background alpha" },
             lightModeAlpha: { type: "number", description: "Light mode background alpha" },
+          },
+        },
+      },
+      required: ["projectId"],
+    },
+  },
+  // ============================================================================
+  // PHASE 3: VISUAL EFFECTS TOOLS
+  // ============================================================================
+  {
+    name: "design_generate_shadows",
+    description: "Generate dual shadow system with ambient and definition shadows for glass, card, and elevated surfaces. Uses Flutter 3.29+ withValues API.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", description: "Project ID" },
+        config: {
+          type: "object",
+          description: "Custom shadow system configuration",
+          properties: {
+            glass: {
+              type: "object",
+              description: "Glass shadow configuration",
+              properties: {
+                ambient: {
+                  type: "object",
+                  properties: {
+                    alpha: { type: "number", description: "Shadow opacity (0-1)" },
+                    blur: { type: "number", description: "Blur radius" },
+                    offsetX: { type: "number", description: "X offset" },
+                    offsetY: { type: "number", description: "Y offset" },
+                  },
+                },
+                definition: {
+                  type: "object",
+                  properties: {
+                    alpha: { type: "number", description: "Shadow opacity (0-1)" },
+                    blur: { type: "number", description: "Blur radius" },
+                    offsetX: { type: "number", description: "X offset" },
+                    offsetY: { type: "number", description: "Y offset" },
+                  },
+                },
+              },
+            },
+            card: {
+              type: "object",
+              description: "Card shadow configuration",
+            },
+            elevated: {
+              type: "object",
+              description: "Elevated shadow configuration",
+            },
+            primaryColor: { type: "string", description: "Primary color for elevated shadows (hex)" },
+          },
+        },
+      },
+      required: ["projectId"],
+    },
+  },
+  {
+    name: "design_generate_text_shadows",
+    description: "Generate 4-level text shadow system (subtle, medium, strong, bold) with pre-styled text styles for readable text on glass backgrounds. Uses Flutter 3.29+ withValues API.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", description: "Project ID" },
+        config: {
+          type: "object",
+          description: "Custom text shadow configuration",
+          properties: {
+            subtle: {
+              type: "object",
+              description: "Subtle text shadow (15% opacity)",
+              properties: {
+                offsetX: { type: "number" },
+                offsetY: { type: "number" },
+                blur: { type: "number" },
+              },
+            },
+            medium: {
+              type: "object",
+              description: "Medium text shadow (30% opacity)",
+            },
+            strong: {
+              type: "object",
+              description: "Strong text shadow (40% opacity)",
+            },
+            bold: {
+              type: "object",
+              description: "Bold text shadow (50% opacity)",
+            },
+            styles: {
+              type: "object",
+              description: "Pre-configured text styles",
+              properties: {
+                heading: {
+                  type: "object",
+                  properties: {
+                    fontSize: { type: "number" },
+                    fontWeight: { type: "string" },
+                    color: { type: "string" },
+                  },
+                },
+                subheading: { type: "object" },
+                body: { type: "object" },
+                caption: { type: "object" },
+                display: { type: "object" },
+              },
+            },
+          },
+        },
+      },
+      required: ["projectId"],
+    },
+  },
+  {
+    name: "design_generate_noise_overlay",
+    description: "Generate StaticNoiseOverlay widget for adding grain texture to glass surfaces. Uses seeded Random(42) for consistency. Includes CustomPainter for efficient rendering.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", description: "Project ID" },
+        config: {
+          type: "object",
+          description: "Custom noise overlay configuration",
+          properties: {
+            defaultOpacity: { type: "number", description: "Default noise opacity (0-1)" },
+            defaultDensity: { type: "number", description: "Default noise density (0-1)" },
+            seed: { type: "number", description: "Random seed for consistency" },
+            particleSize: { type: "number", description: "Noise particle size" },
+          },
+        },
+      },
+      required: ["projectId"],
+    },
+  },
+  {
+    name: "design_generate_light_simulation",
+    description: "Generate light simulation system for realistic glass effects via foreground gradient overlays. Creates BoxDecoration helpers for various lighting patterns (top-down, diagonal, reversed).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", description: "Project ID" },
+        config: {
+          type: "object",
+          description: "Custom light simulation configuration",
+          properties: {
+            defaultIntensity: { type: "number", description: "Default light intensity (0-1)" },
+            defaultStopStart: { type: "number", description: "Gradient start stop (0-1)" },
+            defaultStopEnd: { type: "number", description: "Gradient end stop (0-1)" },
+            presets: {
+              type: "object",
+              description: "Light simulation presets",
+              properties: {
+                subtle: {
+                  type: "object",
+                  properties: {
+                    intensity: { type: "number" },
+                  },
+                },
+                strong: { type: "object" },
+                extended: { type: "object" },
+                short: { type: "object" },
+              },
+            },
           },
         },
       },
@@ -933,6 +1142,307 @@ ${code}
 }
 
 // ============================================================================
+// PHASE 3: VISUAL EFFECTS HANDLERS
+// ============================================================================
+
+async function handleGenerateShadows(
+  args: unknown,
+  ctx: DesignToolContext
+): Promise<{ content: Array<{ type: "text"; text: string }> }> {
+  const input = GenerateShadowSystemInputSchema.parse(args);
+
+  const project = ctx.getProject(input.projectId);
+  if (!project) {
+    throw new Error(`Project not found: ${input.projectId}`);
+  }
+
+  const config = { ...DEFAULT_SHADOW_CONFIG, ...input.config };
+
+  // Register helper for Flutter color conversion
+  Handlebars.registerHelper("flutterColor", (color: string) => {
+    return hexToFlutterColor(color);
+  });
+
+  // Compile template
+  const template = Handlebars.compile(SHADOW_SYSTEM_SOURCE);
+  const code = template(config);
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: `Generated Shadow System for ${project.name}
+
+Files generated:
+- lib/theme/app_shadows.dart
+
+Shadow Types:
+- AppShadows.glass: Dual shadows for glass surfaces
+- AppShadows.card: Subtle elevation shadows
+- AppShadows.elevated: Strong shadows with color tint
+
+Features:
+- Dual shadow approach (ambient + definition)
+- Realistic depth and separation
+- Primary color tinted elevated shadows
+- Flutter 3.29+ withValues API
+
+Glass Shadow:
+- Ambient: alpha ${config.glass.ambient.alpha}, blur ${config.glass.ambient.blur}px, offset (${config.glass.ambient.offsetX}, ${config.glass.ambient.offsetY})
+- Definition: alpha ${config.glass.definition.alpha}, blur ${config.glass.definition.blur}px, offset (${config.glass.definition.offsetX}, ${config.glass.definition.offsetY})
+
+Card Shadow:
+- Ambient: alpha ${config.card.ambient.alpha}, blur ${config.card.ambient.blur}px
+- Definition: alpha ${config.card.definition.alpha}, blur ${config.card.definition.blur}px
+
+Elevated Shadow:
+- Primary color: ${config.primaryColor}
+- Ambient: alpha ${config.elevated.ambient.alpha}, blur ${config.elevated.ambient.blur}px
+
+Usage:
+\`\`\`dart
+Container(
+  decoration: BoxDecoration(
+    boxShadow: AppShadows.glass, // or .card or .elevated
+    borderRadius: BorderRadius.circular(20),
+  ),
+  child: YourWidget(),
+)
+\`\`\`
+
+lib/theme/app_shadows.dart:
+\`\`\`dart
+${code}
+\`\`\``,
+      },
+    ],
+  };
+}
+
+async function handleGenerateTextShadows(
+  args: unknown,
+  ctx: DesignToolContext
+): Promise<{ content: Array<{ type: "text"; text: string }> }> {
+  const input = GenerateTextShadowInputSchema.parse(args);
+
+  const project = ctx.getProject(input.projectId);
+  if (!project) {
+    throw new Error(`Project not found: ${input.projectId}`);
+  }
+
+  const config = { ...DEFAULT_TEXT_SHADOW_CONFIG, ...input.config };
+
+  // Register helper for Flutter color conversion
+  Handlebars.registerHelper("flutterColor", (color: string) => {
+    return hexToFlutterColor(color);
+  });
+
+  // Compile template
+  const template = Handlebars.compile(TEXT_SHADOW_SOURCE);
+  const code = template(config);
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: `Generated Text Shadow System for ${project.name}
+
+Files generated:
+- lib/theme/app_text_shadows.dart
+
+Text Shadow Levels:
+- AppTextShadows.subtle: 15% opacity for secondary text
+- AppTextShadows.medium: 30% opacity for headings
+- AppTextShadows.strong: 40% opacity for emphasis
+- AppTextShadows.bold: 50% opacity for maximum contrast
+
+Pre-Styled Text Styles:
+- AppTextStyles.heading: ${config.styles.heading.fontSize}px, ${config.styles.heading.fontWeight}, medium shadow
+- AppTextStyles.subheading: ${config.styles.subheading.fontSize}px, ${config.styles.subheading.fontWeight}, subtle shadow
+- AppTextStyles.body: ${config.styles.body.fontSize}px, ${config.styles.body.fontWeight}, no shadow
+- AppTextStyles.caption: ${config.styles.caption.fontSize}px, ${config.styles.caption.fontWeight}, no shadow
+- AppTextStyles.display: ${config.styles.display.fontSize}px, ${config.styles.display.fontWeight}, bold shadow
+
+Features:
+- 4-level text shadow hierarchy
+- Pre-configured text styles for glass backgrounds
+- Optimized for readability on gradients
+- Flutter 3.29+ const Shadow API
+
+Usage:
+\`\`\`dart
+Text(
+  'Heading Text',
+  style: AppTextStyles.heading,
+)
+
+// Or custom shadow
+Text(
+  'Custom Text',
+  style: TextStyle(
+    fontSize: 24,
+    color: Colors.white,
+    shadows: AppTextShadows.medium,
+  ),
+)
+\`\`\`
+
+lib/theme/app_text_shadows.dart:
+\`\`\`dart
+${code}
+\`\`\``,
+      },
+    ],
+  };
+}
+
+async function handleGenerateNoiseOverlay(
+  args: unknown,
+  ctx: DesignToolContext
+): Promise<{ content: Array<{ type: "text"; text: string }> }> {
+  const input = GenerateNoiseOverlayInputSchema.parse(args);
+
+  const project = ctx.getProject(input.projectId);
+  if (!project) {
+    throw new Error(`Project not found: ${input.projectId}`);
+  }
+
+  const config = { ...DEFAULT_NOISE_CONFIG, ...input.config };
+
+  // Compile template
+  const template = Handlebars.compile(NOISE_OVERLAY_SOURCE);
+  const code = template(config);
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: `Generated Noise Overlay Widget for ${project.name}
+
+Files generated:
+- lib/widgets/noise_overlay.dart
+
+Components:
+- StaticNoiseOverlay: Widget wrapper
+- _StaticNoisePainter: CustomPainter for rendering
+- NoisePresets: Pre-configured presets
+
+Features:
+- Seeded random (seed: ${config.seed}) for consistency
+- Efficient CustomPainter rendering
+- Configurable opacity and density
+- Pre-built presets (verySubtle, subtle, medium, strong)
+
+Configuration:
+- Default opacity: ${config.defaultOpacity}
+- Default density: ${config.defaultDensity}
+- Particle size: ${config.particleSize}px
+- Seed: ${config.seed} (deterministic)
+
+Usage:
+\`\`\`dart
+StaticNoiseOverlay(
+  opacity: 0.06,
+  density: 0.3,
+  child: YourGlassWidget(),
+)
+
+// Or use preset
+NoisePresets.subtle(
+  child: YourGlassWidget(),
+)
+\`\`\`
+
+lib/widgets/noise_overlay.dart:
+\`\`\`dart
+${code}
+\`\`\``,
+      },
+    ],
+  };
+}
+
+async function handleGenerateLightSimulation(
+  args: unknown,
+  ctx: DesignToolContext
+): Promise<{ content: Array<{ type: "text"; text: string }> }> {
+  const input = GenerateLightSimulationInputSchema.parse(args);
+
+  const project = ctx.getProject(input.projectId);
+  if (!project) {
+    throw new Error(`Project not found: ${input.projectId}`);
+  }
+
+  const config = { ...DEFAULT_LIGHT_CONFIG, ...input.config };
+
+  // Compile template
+  const template = Handlebars.compile(LIGHT_SIMULATION_SOURCE);
+  const code = template(config);
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: `Generated Light Simulation System for ${project.name}
+
+Files generated:
+- lib/theme/app_light_simulation.dart
+
+Components:
+- AppLightSimulation: Static helper class
+- LightSimulationMixin: Mixin for widgets
+
+Light Simulation Methods:
+- AppLightSimulation.standard(): Default top-to-bottom fade
+- AppLightSimulation.subtle(): Lower intensity (${config.presets.subtle.intensity})
+- AppLightSimulation.strong(): Higher intensity (${config.presets.strong.intensity})
+- AppLightSimulation.reversed(): Bottom-to-top fade
+- AppLightSimulation.diagonal(): Top-left to bottom-right
+- AppLightSimulation.extended(): Longer gradient transition
+- AppLightSimulation.short(): Quick transition
+
+Configuration:
+- Default intensity: ${config.defaultIntensity}
+- Default gradient stops: ${config.defaultStopStart} - ${config.defaultStopEnd}
+
+Features:
+- Realistic glass lighting effects
+- Multiple directional patterns
+- Customizable intensity and gradients
+- Applied via foregroundDecoration
+
+Usage:
+\`\`\`dart
+Container(
+  decoration: BoxDecoration(...), // Background
+  foregroundDecoration: AppLightSimulation.standard(
+    BorderRadius.circular(20),
+  ),
+  child: YourContent(),
+)
+
+// Or custom
+Container(
+  foregroundDecoration: AppLightSimulation.createDecoration(
+    borderRadius: BorderRadius.circular(20),
+    intensity: 0.2,
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  ),
+  child: YourContent(),
+)
+\`\`\`
+
+lib/theme/app_light_simulation.dart:
+\`\`\`dart
+${code}
+\`\`\``,
+      },
+    ],
+  };
+}
+
+// ============================================================================
 // MAIN HANDLER
 // ============================================================================
 
@@ -962,6 +1472,15 @@ export async function handleDesignTool(
       return handleGenerateGlassButton(args, ctx);
     case "design_generate_glass_bottomsheet":
       return handleGenerateGlassBottomSheet(args, ctx);
+    // Phase 3: Visual Effects tools
+    case "design_generate_shadows":
+      return handleGenerateShadows(args, ctx);
+    case "design_generate_text_shadows":
+      return handleGenerateTextShadows(args, ctx);
+    case "design_generate_noise_overlay":
+      return handleGenerateNoiseOverlay(args, ctx);
+    case "design_generate_light_simulation":
+      return handleGenerateLightSimulation(args, ctx);
     default:
       throw new Error(`Unknown design tool: ${toolName}`);
   }
