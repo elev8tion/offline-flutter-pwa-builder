@@ -69,6 +69,18 @@ const ProjectValidateSchema = z.object({
   projectId: z.string().uuid(),
 });
 
+const ProjectExportFilesSchema = z.object({
+  projectId: z.string().uuid(),
+  outputPath: z.string().min(1),
+  files: z.array(z.string()).optional(),
+  includeAssets: z.boolean().default(false),
+  createFlutterProject: z.boolean().default(false),
+});
+
+const ProjectValidateBuildSchema = z.object({
+  projectId: z.string().uuid(),
+});
+
 const ModuleInstallSchema = z.object({
   projectId: z.string().uuid(),
   moduleId: z.string().min(1),
@@ -188,6 +200,53 @@ export function getTools(): Tool[] {
     {
       name: "project_validate",
       description: "Validate project configuration",
+      inputSchema: {
+        type: "object",
+        properties: {
+          projectId: {
+            type: "string",
+            description: "Project ID",
+          },
+        },
+        required: ["projectId"],
+      },
+    },
+    {
+      name: "project_export_files",
+      description: "Write generated files to disk without running full build pipeline",
+      inputSchema: {
+        type: "object",
+        properties: {
+          projectId: {
+            type: "string",
+            description: "Project ID",
+          },
+          outputPath: {
+            type: "string",
+            description: "Output directory path",
+          },
+          files: {
+            type: "array",
+            items: {
+              type: "string",
+            },
+            description: "Specific files to export (all if omitted)",
+          },
+          includeAssets: {
+            type: "boolean",
+            description: "Include asset files",
+          },
+          createFlutterProject: {
+            type: "boolean",
+            description: "Run flutter create first",
+          },
+        },
+        required: ["projectId", "outputPath"],
+      },
+    },
+    {
+      name: "project_validate_build",
+      description: "Pre-flight check before build",
       inputSchema: {
         type: "object",
         properties: {
@@ -415,6 +474,140 @@ export async function handleToolCall(
         valid: result.valid,
         summary: formatValidationResult(result),
         issues: result.issues,
+      };
+    }
+
+    case "project_export_files": {
+      const parsed = ProjectExportFilesSchema.parse(args);
+
+      // Get the project
+      const project = context.projectEngine.get(parsed.projectId);
+      if (!project) {
+        throw new Error(`Project not found: ${parsed.projectId}`);
+      }
+
+      // Generate all files
+      const allFiles = await context.projectEngine.generate(parsed.projectId);
+
+      // Filter files if specific files were requested
+      const filesToExport = parsed.files
+        ? allFiles.filter((f) => parsed.files!.includes(f.path))
+        : allFiles;
+
+      // Run flutter create if requested
+      if (parsed.createFlutterProject) {
+        // Note: In a real implementation, this would execute:
+        // await exec(`flutter create ${parsed.outputPath}`);
+      }
+
+      // Write files using file system
+      const transaction = context.fileSystem.beginTransaction();
+
+      try {
+        for (const file of filesToExport) {
+          const fullPath = `${parsed.outputPath}/${file.path}`;
+          transaction.write(fullPath, file.content);
+        }
+
+        await transaction.commit();
+      } catch (error) {
+        transaction.rollback();
+        throw error;
+      }
+
+      return {
+        success: true,
+        exported: filesToExport.length,
+        outputPath: parsed.outputPath,
+        files: filesToExport.map((f) => f.path),
+        message: `Exported ${filesToExport.length} files to ${parsed.outputPath}`,
+      };
+    }
+
+    case "project_validate_build": {
+      const parsed = ProjectValidateBuildSchema.parse(args);
+
+      // Get the project
+      const project = context.projectEngine.get(parsed.projectId);
+      if (!project) {
+        throw new Error(`Project not found: ${parsed.projectId}`);
+      }
+
+      const issues: Array<{ type: string; severity: string; message: string }> = [];
+
+      // Check that all enabled modules exist in the registry
+      for (const moduleConfig of project.modules) {
+        if (moduleConfig.enabled) {
+          const module = context.moduleSystem.get(moduleConfig.id);
+          if (!module) {
+            issues.push({
+              type: "module",
+              severity: "error",
+              message: `Module '${moduleConfig.id}' is enabled but not found in registry`,
+            });
+          }
+        }
+      }
+
+      // Check for missing dependencies between modules
+      const enabledModuleIds = project.modules
+        .filter((m) => m.enabled)
+        .map((m) => m.id);
+
+      for (const moduleId of enabledModuleIds) {
+        const module = context.moduleSystem.get(moduleId);
+        if (module) {
+          for (const dep of module.dependencies) {
+            if (!dep.optional && !enabledModuleIds.includes(dep.id)) {
+              issues.push({
+                type: "dependency",
+                severity: "error",
+                message: `Module '${moduleId}' requires '${dep.id}' but it is not enabled`,
+              });
+            }
+          }
+        }
+      }
+
+      // Check for module conflicts
+      for (const moduleId of enabledModuleIds) {
+        const module = context.moduleSystem.get(moduleId);
+        if (module) {
+          for (const conflictId of module.conflicts) {
+            if (enabledModuleIds.includes(conflictId)) {
+              issues.push({
+                type: "conflict",
+                severity: "error",
+                message: `Module '${moduleId}' conflicts with '${conflictId}'`,
+              });
+            }
+          }
+        }
+      }
+
+      // Check for target compatibility
+      for (const moduleId of enabledModuleIds) {
+        const module = context.moduleSystem.get(moduleId);
+        if (module) {
+          const incompatibleTargets = project.targets.filter(
+            (target) => !module.compatibleTargets.includes(target)
+          );
+          if (incompatibleTargets.length > 0) {
+            issues.push({
+              type: "compatibility",
+              severity: "warning",
+              message: `Module '${moduleId}' is not compatible with targets: ${incompatibleTargets.join(", ")}`,
+            });
+          }
+        }
+      }
+
+      const valid = !issues.some((i) => i.severity === "error");
+
+      return {
+        valid,
+        issues,
+        summary: `Found ${issues.length} issue${issues.length !== 1 ? "s" : ""} (${issues.filter((i) => i.severity === "error").length} errors, ${issues.filter((i) => i.severity === "warning").length} warnings)`,
       };
     }
 

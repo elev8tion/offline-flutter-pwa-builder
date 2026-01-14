@@ -7,6 +7,7 @@
 import { z } from "zod";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { ProjectDefinition } from "../../core/types.js";
+import { withDefaults } from "../../core/config-system/index.js";
 import {
   DesignModuleConfig,
   AnimationType,
@@ -156,6 +157,16 @@ export const GenerateNoiseOverlayInputSchema = z.object({
 export const GenerateLightSimulationInputSchema = z.object({
   projectId: z.string().describe("Project ID"),
   config: LightSimulationConfigSchema.optional().describe("Custom light simulation configuration"),
+});
+
+export const GenerateFullSystemInputSchema = z.object({
+  projectId: z.string().describe("Project ID"),
+  primaryColor: z.string().default("#6366F1").describe("Primary brand color (hex)"),
+  accentColor: z.string().default("#D4AF37").describe("Accent color (hex)"),
+  darkMode: z.boolean().default(true).describe("Generate dark mode theme"),
+  glassmorph: z.boolean().default(true).describe("Enable glassmorphic effects"),
+  includeComponents: z.boolean().default(true).describe("Generate glass components"),
+  includeAnimations: z.boolean().default(true).describe("Generate animation system"),
 });
 
 // ============================================================================
@@ -555,6 +566,23 @@ export const DESIGN_TOOLS: Tool[] = [
       required: ["projectId"],
     },
   },
+  {
+    name: "design_generate_full_system",
+    description: "Generate complete glassmorphic design system with all tokens, gradients, shadows, components, and theme in a single call",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", description: "Project ID" },
+        primaryColor: { type: "string", description: "Primary brand color (hex, default: #6366F1)" },
+        accentColor: { type: "string", description: "Accent color (hex, default: #D4AF37)" },
+        darkMode: { type: "boolean", description: "Generate dark mode theme (default: true)" },
+        glassmorph: { type: "boolean", description: "Enable glassmorphic effects (default: true)" },
+        includeComponents: { type: "boolean", description: "Generate glass components (default: true)" },
+        includeAnimations: { type: "boolean", description: "Generate animation system (default: true)" },
+      },
+      required: ["projectId"],
+    },
+  },
 ];
 
 // ============================================================================
@@ -786,23 +814,9 @@ async function handleGenerateEdcTokens(
     throw new Error(`Project not found: ${input.projectId}`);
   }
 
-  // Merge with defaults
-  const config: EdcDesignTokensConfig = {
-    ...DEFAULT_EDC_DESIGN_TOKENS,
-    ...input.config,
-    spacing: { ...DEFAULT_EDC_DESIGN_TOKENS.spacing, ...input.config?.spacing },
-    colors: {
-      ...DEFAULT_EDC_DESIGN_TOKENS.colors,
-      ...input.config?.colors,
-      textAlpha: { ...DEFAULT_EDC_DESIGN_TOKENS.colors.textAlpha, ...input.config?.colors?.textAlpha },
-      glassAlpha: { ...DEFAULT_EDC_DESIGN_TOKENS.colors.glassAlpha, ...input.config?.colors?.glassAlpha },
-      borderAlpha: { ...DEFAULT_EDC_DESIGN_TOKENS.colors.borderAlpha, ...input.config?.colors?.borderAlpha },
-    },
-    radius: { ...DEFAULT_EDC_DESIGN_TOKENS.radius, ...input.config?.radius },
-    animations: { ...DEFAULT_EDC_DESIGN_TOKENS.animations, ...input.config?.animations },
-    sizes: { ...DEFAULT_EDC_DESIGN_TOKENS.sizes, ...input.config?.sizes },
-    blur: { ...DEFAULT_EDC_DESIGN_TOKENS.blur, ...input.config?.blur },
-  };
+  // Merge with defaults using withDefaults pattern
+  const getEdcConfig = withDefaults(DEFAULT_EDC_DESIGN_TOKENS);
+  const config = getEdcConfig(input.config);
 
   // Generate code
   const tokensCode = generateEdcTokensCode(config);
@@ -842,20 +856,9 @@ async function handleGenerateGlassGradients(
     throw new Error(`Project not found: ${input.projectId}`);
   }
 
-  // Merge with defaults
-  const config: EdcGlassGradientsConfig = {
-    ...DEFAULT_EDC_GLASS_GRADIENTS,
-    ...input.config,
-    glass: { ...DEFAULT_EDC_GLASS_GRADIENTS.glass, ...input.config?.glass },
-    colors: { ...DEFAULT_EDC_GLASS_GRADIENTS.colors, ...input.config?.colors },
-    background: {
-      ...DEFAULT_EDC_GLASS_GRADIENTS.background,
-      ...input.config?.background,
-      dark: { ...DEFAULT_EDC_GLASS_GRADIENTS.background.dark, ...input.config?.background?.dark },
-      light: { ...DEFAULT_EDC_GLASS_GRADIENTS.background.light, ...input.config?.background?.light },
-    },
-    status: { ...DEFAULT_EDC_GLASS_GRADIENTS.status, ...input.config?.status },
-  };
+  // Merge with defaults using withDefaults pattern
+  const getGradientsConfig = withDefaults(DEFAULT_EDC_GLASS_GRADIENTS);
+  const config = getGradientsConfig(input.config);
 
   // Generate code
   const gradientsCode = generateGlassGradientsCode(config);
@@ -973,7 +976,8 @@ async function handleGenerateGlassCard(
   const isContainer = variant === "container";
 
   const defaultConfig = isContainer ? DEFAULT_GLASS_CONTAINER_CONFIG : DEFAULT_GLASS_CARD_CONFIG;
-  const config = { ...defaultConfig, ...input.config, projectName: project.name };
+  const getCardConfig = withDefaults(defaultConfig);
+  const config = { ...getCardConfig(input.config), projectName: project.name };
 
   // Compile template
   const template = Handlebars.compile(isContainer ? GLASS_CONTAINER_SOURCE : GLASS_CARD_SOURCE);
@@ -1029,7 +1033,8 @@ async function handleGenerateGlassButton(
     throw new Error(`Project not found: ${input.projectId}`);
   }
 
-  const config = { ...DEFAULT_GLASS_BUTTON_CONFIG, ...input.config, projectName: project.name };
+  const getButtonConfig = withDefaults(DEFAULT_GLASS_BUTTON_CONFIG);
+  const config = { ...getButtonConfig(input.config), projectName: project.name };
 
   // Compile template
   const template = Handlebars.compile(GLASS_BUTTON_SOURCE);
@@ -1090,7 +1095,8 @@ async function handleGenerateGlassBottomSheet(
     throw new Error(`Project not found: ${input.projectId}`);
   }
 
-  const config = { ...DEFAULT_GLASS_BOTTOMSHEET_CONFIG, ...input.config };
+  const getBottomSheetConfig = withDefaults(DEFAULT_GLASS_BOTTOMSHEET_CONFIG);
+  const config = getBottomSheetConfig(input.config);
 
   // Compile template
   const template = Handlebars.compile(GLASS_BOTTOMSHEET_SOURCE);
@@ -1161,7 +1167,8 @@ async function handleGenerateShadows(
     throw new Error(`Project not found: ${input.projectId}`);
   }
 
-  const config = { ...DEFAULT_SHADOW_CONFIG, ...input.config };
+  const getShadowConfig = withDefaults(DEFAULT_SHADOW_CONFIG);
+  const config = getShadowConfig(input.config);
 
   // Register helper for Flutter color conversion
   Handlebars.registerHelper("flutterColor", (color: string) => {
@@ -1235,7 +1242,8 @@ async function handleGenerateTextShadows(
     throw new Error(`Project not found: ${input.projectId}`);
   }
 
-  const config = { ...DEFAULT_TEXT_SHADOW_CONFIG, ...input.config };
+  const getTextShadowConfig = withDefaults(DEFAULT_TEXT_SHADOW_CONFIG);
+  const config = getTextShadowConfig(input.config);
 
   // Register helper for Flutter color conversion
   Handlebars.registerHelper("flutterColor", (color: string) => {
@@ -1312,7 +1320,8 @@ async function handleGenerateNoiseOverlay(
     throw new Error(`Project not found: ${input.projectId}`);
   }
 
-  const config = { ...DEFAULT_NOISE_CONFIG, ...input.config };
+  const getNoiseConfig = withDefaults(DEFAULT_NOISE_CONFIG);
+  const config = getNoiseConfig(input.config);
 
   // Compile template
   const template = Handlebars.compile(NOISE_OVERLAY_SOURCE);
@@ -1378,7 +1387,8 @@ async function handleGenerateLightSimulation(
     throw new Error(`Project not found: ${input.projectId}`);
   }
 
-  const config = { ...DEFAULT_LIGHT_CONFIG, ...input.config };
+  const getLightConfig = withDefaults(DEFAULT_LIGHT_CONFIG);
+  const config = getLightConfig(input.config);
 
   // Compile template
   const template = Handlebars.compile(LIGHT_SIMULATION_SOURCE);
@@ -1447,6 +1457,203 @@ ${code}
   };
 }
 
+async function handleGenerateFullSystem(
+  args: unknown,
+  ctx: DesignToolContext
+): Promise<{ content: Array<{ type: "text"; text: string }> }> {
+  const input = GenerateFullSystemInputSchema.parse(args);
+
+  const project = ctx.getProject(input.projectId);
+  if (!project) {
+    throw new Error(`Project not found: ${input.projectId}`);
+  }
+
+  // Collect all generated files and summaries
+  const results: string[] = [];
+  let totalFiles = 0;
+
+  results.push(`# Complete Glassmorphic Design System Generated for ${project.name}\n`);
+  results.push(`Primary Color: ${input.primaryColor}`);
+  results.push(`Accent Color: ${input.accentColor}`);
+  results.push(`Dark Mode: ${input.darkMode ? "Enabled" : "Disabled"}`);
+  results.push(`Glassmorphic Effects: ${input.glassmorph ? "Enabled" : "Disabled"}`);
+  results.push(`Components Included: ${input.includeComponents ? "Yes" : "No"}`);
+  results.push(`\n---\n`);
+
+  // 1. Generate EDC tokens
+  try {
+    const tokensResult = await handleGenerateEdcTokens({ projectId: input.projectId }, ctx);
+    results.push(`## 1. EDC Design Tokens\n`);
+    results.push(tokensResult.content[0].text);
+    results.push(`\n---\n`);
+    totalFiles += 1;
+  } catch (error) {
+    results.push(`## 1. EDC Design Tokens - ERROR: ${error instanceof Error ? error.message : String(error)}\n`);
+  }
+
+  // 2. Generate gradients
+  try {
+    const gradientsResult = await handleGenerateGlassGradients({ projectId: input.projectId }, ctx);
+    results.push(`## 2. Glass Gradients\n`);
+    results.push(gradientsResult.content[0].text);
+    results.push(`\n---\n`);
+    totalFiles += 1;
+  } catch (error) {
+    results.push(`## 2. Glass Gradients - ERROR: ${error instanceof Error ? error.message : String(error)}\n`);
+  }
+
+  // 3. Generate WCAG contrast calculator
+  try {
+    const wcagResult = await handleGenerateWcag({ projectId: input.projectId }, ctx);
+    results.push(`## 3. WCAG Contrast Calculator\n`);
+    results.push(wcagResult.content[0].text);
+    results.push(`\n---\n`);
+    totalFiles += 1;
+  } catch (error) {
+    results.push(`## 3. WCAG Contrast Calculator - ERROR: ${error instanceof Error ? error.message : String(error)}\n`);
+  }
+
+  // 4. Generate shadows
+  try {
+    const shadowsResult = await handleGenerateShadows({ projectId: input.projectId }, ctx);
+    results.push(`## 4. Shadow System\n`);
+    results.push(shadowsResult.content[0].text);
+    results.push(`\n---\n`);
+    totalFiles += 1;
+  } catch (error) {
+    results.push(`## 4. Shadow System - ERROR: ${error instanceof Error ? error.message : String(error)}\n`);
+  }
+
+  // 5. Generate text shadows
+  try {
+    const textShadowsResult = await handleGenerateTextShadows({ projectId: input.projectId }, ctx);
+    results.push(`## 5. Text Shadow System\n`);
+    results.push(textShadowsResult.content[0].text);
+    results.push(`\n---\n`);
+    totalFiles += 1;
+  } catch (error) {
+    results.push(`## 5. Text Shadow System - ERROR: ${error instanceof Error ? error.message : String(error)}\n`);
+  }
+
+  // 6. Generate noise overlay
+  try {
+    const noiseResult = await handleGenerateNoiseOverlay({ projectId: input.projectId }, ctx);
+    results.push(`## 6. Noise Overlay\n`);
+    results.push(noiseResult.content[0].text);
+    results.push(`\n---\n`);
+    totalFiles += 1;
+  } catch (error) {
+    results.push(`## 6. Noise Overlay - ERROR: ${error instanceof Error ? error.message : String(error)}\n`);
+  }
+
+  // 7. Generate light simulation
+  try {
+    const lightResult = await handleGenerateLightSimulation({ projectId: input.projectId }, ctx);
+    results.push(`## 7. Light Simulation\n`);
+    results.push(lightResult.content[0].text);
+    results.push(`\n---\n`);
+    totalFiles += 1;
+  } catch (error) {
+    results.push(`## 7. Light Simulation - ERROR: ${error instanceof Error ? error.message : String(error)}\n`);
+  }
+
+  // 8-10. Generate components if requested
+  if (input.includeComponents) {
+    // 8. Generate glass card/container
+    try {
+      const cardResult = await handleGenerateGlassCard({ projectId: input.projectId, variant: "container" }, ctx);
+      results.push(`## 8. Glass Container Component\n`);
+      results.push(cardResult.content[0].text);
+      results.push(`\n---\n`);
+      totalFiles += 1;
+    } catch (error) {
+      results.push(`## 8. Glass Container Component - ERROR: ${error instanceof Error ? error.message : String(error)}\n`);
+    }
+
+    // 9. Generate glass button
+    try {
+      const buttonResult = await handleGenerateGlassButton({ projectId: input.projectId }, ctx);
+      results.push(`## 9. Glass Button Component\n`);
+      results.push(buttonResult.content[0].text);
+      results.push(`\n---\n`);
+      totalFiles += 1;
+    } catch (error) {
+      results.push(`## 9. Glass Button Component - ERROR: ${error instanceof Error ? error.message : String(error)}\n`);
+    }
+
+    // 10. Generate glass bottomsheet
+    try {
+      const bottomsheetResult = await handleGenerateGlassBottomSheet({ projectId: input.projectId }, ctx);
+      results.push(`## 10. Glass Bottom Sheet Component\n`);
+      results.push(bottomsheetResult.content[0].text);
+      results.push(`\n---\n`);
+      totalFiles += 1;
+    } catch (error) {
+      results.push(`## 10. Glass Bottom Sheet Component - ERROR: ${error instanceof Error ? error.message : String(error)}\n`);
+    }
+  }
+
+  // 11. Generate integrated theme
+  try {
+    const themeResult = await handleGenerateTheme({
+      projectId: input.projectId,
+      primaryColor: input.primaryColor,
+      accentColor: input.accentColor,
+      darkMode: input.darkMode,
+      glassmorph: input.glassmorph,
+    }, ctx);
+    results.push(`## ${input.includeComponents ? "11" : "8"}. Integrated Theme\n`);
+    results.push(themeResult.content[0].text);
+    results.push(`\n---\n`);
+    totalFiles += 1;
+  } catch (error) {
+    results.push(`## ${input.includeComponents ? "11" : "8"}. Integrated Theme - ERROR: ${error instanceof Error ? error.message : String(error)}\n`);
+  }
+
+  // Summary
+  results.push(`\n## Summary\n`);
+  results.push(`Generated ${totalFiles} files for complete glassmorphic design system`);
+  results.push(`\n**Files Generated:**`);
+  results.push(`- lib/theme/app_theme_extensions.dart (EDC tokens)`);
+  results.push(`- lib/theme/app_gradients.dart (Glass gradients)`);
+  results.push(`- lib/theme/wcag_contrast.dart (WCAG calculator)`);
+  results.push(`- lib/theme/app_shadows.dart (Shadow system)`);
+  results.push(`- lib/theme/app_text_shadows.dart (Text shadows)`);
+  results.push(`- lib/theme/noise_overlay.dart (Noise overlay)`);
+  results.push(`- lib/theme/app_light_simulation.dart (Light simulation)`);
+  if (input.includeComponents) {
+    results.push(`- lib/widgets/glass_container.dart (Glass container)`);
+    results.push(`- lib/widgets/glass_button.dart (Glass button)`);
+    results.push(`- lib/widgets/glass_bottomsheet.dart (Glass bottom sheet)`);
+  }
+  results.push(`- lib/theme/app_theme.dart (Integrated theme)`);
+
+  results.push(`\n**Features:**`);
+  results.push(`- Complete EDC design token system`);
+  results.push(`- 4-level glass gradient hierarchy`);
+  results.push(`- WCAG 2.1 AA/AAA contrast checking`);
+  results.push(`- Dual shadow technique (ambient + definition)`);
+  results.push(`- 4-level text shadow system`);
+  results.push(`- Static noise overlay for texture`);
+  results.push(`- Directional light simulation`);
+  if (input.includeComponents) {
+    results.push(`- Production-ready glass components`);
+    results.push(`- Press animations with haptic feedback`);
+    results.push(`- BackdropFilter blur effects`);
+  }
+  results.push(`- ${input.darkMode ? "Light and dark" : "Light"} theme support`);
+  results.push(`- Material 3 integration`);
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: results.join("\n"),
+      },
+    ],
+  };
+}
+
 // ============================================================================
 // MAIN HANDLER
 // ============================================================================
@@ -1486,6 +1693,8 @@ export async function handleDesignTool(
       return handleGenerateNoiseOverlay(args, ctx);
     case "design_generate_light_simulation":
       return handleGenerateLightSimulation(args, ctx);
+    case "design_generate_full_system":
+      return handleGenerateFullSystem(args, ctx);
     default:
       throw new Error(`Unknown design tool: ${toolName}`);
   }

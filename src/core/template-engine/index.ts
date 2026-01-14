@@ -15,6 +15,7 @@ import type {
   RenderedFile,
   TemplateEngine as ITemplateEngine,
 } from "../types.js";
+import { adaptForFlutterVersion } from "./flutter-adapter.js";
 
 // ============================================================================
 // HANDLEBARS HELPERS
@@ -290,7 +291,11 @@ export class TemplateEngine implements ITemplateEngine {
       throw new Error(`Template not compiled: ${templateId}`);
     }
 
-    const content = compiled(data);
+    let content = compiled(data);
+
+    // Apply Flutter version adapter
+    const flutterVersion = context.project?.flutter?.version || '3.24.0';
+    content = adaptForFlutterVersion(content, flutterVersion);
 
     // Build output path
     const outputPath = this.buildOutputPath(template, data);
@@ -321,9 +326,16 @@ export class TemplateEngine implements ITemplateEngine {
     return results;
   }
 
-  renderString(source: string, data: Record<string, unknown>): string {
+  renderString(source: string, data: Record<string, unknown>, flutterVersion?: string): string {
     const compiled = this.handlebars.compile(source);
-    return compiled(data);
+    let rendered = compiled(data);
+
+    // Apply Flutter version adapter if version provided
+    if (flutterVersion) {
+      rendered = adaptForFlutterVersion(rendered, flutterVersion);
+    }
+
+    return rendered;
   }
 
   preview(templateId: string, context: TemplateContext): string {
@@ -339,7 +351,13 @@ export class TemplateEngine implements ITemplateEngine {
       throw new Error(`Template not compiled: ${templateId}`);
     }
 
-    return compiled(data);
+    let content = compiled(data);
+
+    // Apply Flutter version adapter
+    const flutterVersion = context.project?.flutter?.version || '3.24.0';
+    content = adaptForFlutterVersion(content, flutterVersion);
+
+    return content;
   }
 
   registerHelper(name: string, fn: (...args: unknown[]) => unknown): void {

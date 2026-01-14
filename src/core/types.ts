@@ -75,6 +75,10 @@ export interface ProjectDefinition {
   stateManagement: StateManagement;
   modules: ModuleConfig[];
   targets: TargetPlatform[];
+  flutter?: {
+    version: string;  // e.g., "3.24.0"
+    channel?: 'stable' | 'beta' | 'dev';
+  };
   createdAt: string;
   updatedAt: string;
 }
@@ -174,6 +178,8 @@ export interface GeneratedFile {
   path: string;
   content: string;
   module?: string;
+  dependencies?: string[]; // Paths to required files
+  exports?: string[];      // Classes/functions this file exports
 }
 
 // ============================================================================

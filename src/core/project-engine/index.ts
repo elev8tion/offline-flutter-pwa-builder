@@ -18,6 +18,7 @@ import type {
   ProjectEngine as IProjectEngine,
 } from "../types.js";
 import { ModuleSystem, HookExecutor, DependencyResolver } from "../module-system/index.js";
+import { createDependencyGraph, FLUTTER_DEPENDENCIES } from "../dependency-graph/index.js";
 
 // ============================================================================
 // DEFAULT CONFIGURATIONS
@@ -107,6 +108,10 @@ export class ProjectEngine implements IProjectEngine {
       stateManagement: definition.stateManagement ?? "riverpod",
       modules: definition.modules ?? [],
       targets: definition.targets ?? ["web"],
+      flutter: definition.flutter ?? {
+        version: "3.24.0",
+        channel: "stable",
+      },
       createdAt: now,
       updatedAt: now,
     };
@@ -168,6 +173,10 @@ export class ProjectEngine implements IProjectEngine {
           ...updates.offline?.caching,
         },
       },
+      flutter: updates.flutter ? {
+        ...existing.flutter,
+        ...updates.flutter,
+      } : existing.flutter,
     };
 
     // Handle module changes
@@ -239,7 +248,55 @@ export class ProjectEngine implements IProjectEngine {
     // Execute afterGenerate hooks
     await this.hookExecutor.executeAfterGenerate(project, modules);
 
-    return files;
+    // Build dependency graph and resolve imports
+    const dependencyGraph = createDependencyGraph();
+
+    // Add files to graph with their dependencies
+    for (const file of files) {
+      const dependencies = file.dependencies ?? FLUTTER_DEPENDENCIES[file.path] ?? [];
+      const exports = file.exports ?? [];
+
+      dependencyGraph.addFile({
+        path: file.path,
+        content: file.content,
+        dependencies,
+        exports,
+      });
+    }
+
+    // Check for missing dependencies
+    const missing = dependencyGraph.findMissingDependencies();
+    if (missing.length > 0) {
+      console.warn('Warning: Missing dependencies detected:');
+      for (const { file, missing: dep } of missing) {
+        console.warn(`  ${file} requires ${dep} (not generated)`);
+      }
+    }
+
+    // Assemble files with resolved imports in topological order
+    const generationOrder = dependencyGraph.getGenerationOrder();
+    const assembledFiles: GeneratedFile[] = [];
+
+    for (const path of generationOrder) {
+      const assembledContent = dependencyGraph.assembleFile(path);
+      const originalFile = files.find(f => f.path === path);
+
+      if (originalFile) {
+        assembledFiles.push({
+          ...originalFile,
+          content: assembledContent,
+        });
+      }
+    }
+
+    // Add any files that weren't in the dependency graph (no dependencies)
+    for (const file of files) {
+      if (!generationOrder.includes(file.path)) {
+        assembledFiles.push(file);
+      }
+    }
+
+    return assembledFiles;
   }
 
   async validate(id: string): Promise<ValidationResult> {

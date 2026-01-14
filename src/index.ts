@@ -39,6 +39,9 @@ import { SECURITY_MODULE, SECURITY_TEMPLATES } from "./modules/security/index.js
 // Phase 6: Build Module
 import { BUILD_MODULE, BUILD_TEMPLATES } from "./modules/build/index.js";
 
+// Design Module
+import { DesignModule, DESIGN_TEMPLATES } from "./modules/design/index.js";
+
 // Initialize core components
 const fileSystem = new LocalFileSystem();
 const templateEngine = new TemplateEngine();
@@ -57,6 +60,7 @@ moduleSystem.register(PWA_MODULE);
 moduleSystem.register(STATE_MODULE);
 moduleSystem.register(SECURITY_MODULE);
 moduleSystem.register(BUILD_MODULE);
+moduleSystem.register(DesignModule);
 
 // Register templates from modules
 for (const template of DRIFT_TEMPLATES) {
@@ -72,6 +76,9 @@ for (const template of SECURITY_TEMPLATES) {
   templateEngine.register(template);
 }
 for (const template of BUILD_TEMPLATES) {
+  templateEngine.register(template);
+}
+for (const template of DESIGN_TEMPLATES) {
   templateEngine.register(template);
 }
 
