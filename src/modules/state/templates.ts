@@ -30,7 +30,9 @@ import '{{this}}';
   {{#if initialValue}}
   return {{initialValue}};
   {{else}}
-  // TODO: Implement async logic
+  // Fetch data asynchronously
+  // Example: final data = await repository.fetch();
+  // return data;
   throw UnimplementedError('{{name}} provider not implemented');
   {{/if}}
 });
@@ -139,7 +141,8 @@ class SyncQueueNotifier extends StateNotifier<SyncQueueState> {
 
     try {
       for (final op in state.pending) {
-        // TODO: Implement actual sync logic
+        // Sync operation to server
+        // Example: await repository.sync(op.type, op.data);
         await Future.delayed(const Duration(milliseconds: 100));
         removeOperation(op.id);
       }
@@ -268,7 +271,8 @@ class {{blocClass}} extends Cubit<{{stateClass}}> {
   {{#each events}}
   /// Handle {{name}}
   void {{methodName}}({{#if properties}}{ {{#each properties}}{{#if required}}required {{/if}}{{type}} {{name}},{{/each}} }{{/if}}) {
-    // TODO: Implement {{methodName}} logic
+    // Update state based on event
+    // Example: emit(state.copyWith(field: newValue));
     // emit(NewState());
   }
 
@@ -288,7 +292,8 @@ class {{blocClass}} extends Bloc<{{eventClass}}, {{stateClass}}> {
     {{name}} event,
     Emitter<{{../stateClass}}> emit,
   ) async {
-    // TODO: Implement {{name}} handler
+    // Handle event and emit new state
+    // Example: emit(SuccessState(data: event.data));
     // emit(NewState());
   }
 
@@ -383,7 +388,8 @@ class {{blocClass}} extends OfflineAwareBloc<{{eventClass}}, {{stateClass}}> {
 
     for (final op in operations) {
       try {
-        // TODO: Implement actual sync logic based on operation type
+        // Sync operation based on type
+        // Example: if (op['type'] == 'create') await repository.create(op['data']);
         await Future.delayed(const Duration(milliseconds: 100));
       } catch (e) {
         // Re-queue failed operations
@@ -401,7 +407,8 @@ class {{blocClass}} extends OfflineAwareBloc<{{eventClass}}, {{stateClass}}> {
       // Queue for later sync
       queueOperation('{{name}}', {});
     }
-    // TODO: Implement {{name}} handler
+    // Handle event and emit new state
+    // Example: emit(SuccessState(data: event.data));
   }
 
   {{/each}}
@@ -444,42 +451,48 @@ abstract class {{repositoryClassName}}Repository {
 
 /// {{featureName}} Repository Implementation
 class {{repositoryClassName}}RepositoryImpl implements {{repositoryClassName}}Repository {
-  // TODO: Inject data source (local DB, API client)
+  // Inject data source via constructor
+  // Example: final Database db; final ApiClient api;
 
   {{#each operations}}
   {{#switch this}}
   {{#case "create"}}
   @override
   Future<{{../modelName}}> create({{../modelName}} item) async {
-    // TODO: Implement create
+    // Save to local database and sync queue
+    // Example: await db.insert(item); await syncQueue.add('create', item);
     throw UnimplementedError();
   }
   {{/case}}
   {{#case "read"}}
   @override
   Future<{{../modelName}}?> getById(String id) async {
-    // TODO: Implement read
+    // Fetch from local database
+    // Example: return await db.query(id);
     throw UnimplementedError();
   }
   {{/case}}
   {{#case "update"}}
   @override
   Future<{{../modelName}}> update({{../modelName}} item) async {
-    // TODO: Implement update
+    // Update in local database and sync queue
+    // Example: await db.update(item); await syncQueue.add('update', item);
     throw UnimplementedError();
   }
   {{/case}}
   {{#case "delete"}}
   @override
   Future<void> delete(String id) async {
-    // TODO: Implement delete
+    // Delete from local database and sync queue
+    // Example: await db.delete(id); await syncQueue.add('delete', {'id': id});
     throw UnimplementedError();
   }
   {{/case}}
   {{#case "list"}}
   @override
   Future<List<{{../modelName}}>> getAll() async {
-    // TODO: Implement list
+    // Fetch all from local database
+    // Example: return await db.queryAll();
     throw UnimplementedError();
   }
   {{/case}}
@@ -519,7 +532,8 @@ class {{modelClassName}} {
   final String id;
   final DateTime createdAt;
   final DateTime updatedAt;
-  // TODO: Add model properties
+  // Add additional model properties here
+  // Example: final String name; final int value;
 
   const {{modelClassName}}({
     required this.id,

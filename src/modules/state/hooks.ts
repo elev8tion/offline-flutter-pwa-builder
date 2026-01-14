@@ -208,7 +208,7 @@ ${imports.join("\n")}
     case "provider":
       code += `/// Simple provider for ${provider.name}
 final ${providerName} = Provider<${provider.stateType}>((ref) {
-  ${provider.initialValue ? `return ${provider.initialValue};` : "// TODO: Return computed value\n  throw UnimplementedError();"}
+  ${provider.initialValue ? `return ${provider.initialValue};` : "// Return computed value\n  // Example: return ref.watch(otherProvider).computed();\n  throw UnimplementedError();"}
 });
 `;
       break;
@@ -216,7 +216,7 @@ final ${providerName} = Provider<${provider.stateType}>((ref) {
     case "stateProvider":
       code += `/// State provider for ${provider.name}
 final ${providerName} = StateProvider${provider.autoDispose ? ".autoDispose" : ""}${provider.family ? `.family<${provider.stateType}, ${provider.familyParamType}>` : `<${provider.stateType}>`}((ref${provider.family ? ", param" : ""}) {
-  ${provider.initialValue ? `return ${provider.initialValue};` : "// TODO: Return initial state\n  throw UnimplementedError();"}
+  ${provider.initialValue ? `return ${provider.initialValue};` : "// Return initial state\n  // Example: return MyState();\n  throw UnimplementedError();"}
 });
 `;
       break;
@@ -240,7 +240,7 @@ final ${providerName} = StateNotifierProvider${provider.autoDispose ? ".autoDisp
     case "futureProvider":
       code += `/// Future provider for ${provider.name}
 final ${providerName} = FutureProvider${provider.autoDispose ? ".autoDispose" : ""}${provider.family ? `.family<${provider.stateType}, ${provider.familyParamType}>` : `<${provider.stateType}>`}((ref${provider.family ? ", param" : ""}) async {
-  ${provider.initialValue ? `return ${provider.initialValue};` : "// TODO: Implement async logic\n  throw UnimplementedError();"}
+  ${provider.initialValue ? `return ${provider.initialValue};` : "// Fetch data asynchronously\n  // Example: final data = await repository.fetch();\n  // return data;\n  throw UnimplementedError();"}
 });
 `;
       break;
@@ -248,7 +248,8 @@ final ${providerName} = FutureProvider${provider.autoDispose ? ".autoDispose" : 
     case "streamProvider":
       code += `/// Stream provider for ${provider.name}
 final ${providerName} = StreamProvider${provider.autoDispose ? ".autoDispose" : ""}${provider.family ? `.family<${provider.stateType}, ${provider.familyParamType}>` : `<${provider.stateType}>`}((ref${provider.family ? ", param" : ""}) {
-  // TODO: Return stream
+  // Return stream of data
+  // Example: return repository.watchAll();
   throw UnimplementedError();
 });
 `;
@@ -259,7 +260,7 @@ final ${providerName} = StreamProvider${provider.autoDispose ? ".autoDispose" : 
 class ${className}Notifier extends Notifier<${provider.stateType}> {
   @override
   ${provider.stateType} build() {
-    ${provider.initialValue ? `return ${provider.initialValue};` : "// TODO: Return initial state\n    throw UnimplementedError();"}
+    ${provider.initialValue ? `return ${provider.initialValue};` : "// Return initial state\n    // Example: return MyState();\n    throw UnimplementedError();"}
   }
 
   void update(${provider.stateType} newState) {
@@ -278,7 +279,7 @@ final ${providerName} = NotifierProvider<${className}Notifier, ${provider.stateT
 class ${className}AsyncNotifier extends AsyncNotifier<${provider.stateType}> {
   @override
   Future<${provider.stateType}> build() async {
-    ${provider.initialValue ? `return ${provider.initialValue};` : "// TODO: Implement async initialization\n    throw UnimplementedError();"}
+    ${provider.initialValue ? `return ${provider.initialValue};` : "// Fetch initial data asynchronously\n    // Example: final data = await repository.fetch();\n    // return data;\n    throw UnimplementedError();"}
   }
 
   Future<void> refresh() async {
@@ -407,7 +408,8 @@ class SyncQueueNotifier extends StateNotifier<SyncQueueState> {
     try {
       for (final op in List.from(state.pending)) {
         try {
-          // TODO: Implement actual sync logic based on operation type
+          // Sync operation based on type
+          // Example: if (op.type == 'create') await repository.create(op.data);
           await Future.delayed(Duration(milliseconds: 100));
           removeOperation(op.id);
         } catch (e) {
@@ -475,7 +477,8 @@ ${bloc.events
     const params = e.properties?.map((p) => `${p.required ? "required " : ""}${p.type} ${p.name}`).join(", ");
     return `  /// Handle ${e.name}
   void ${methodName}(${params ? `{${params}}` : ""}) {
-    // TODO: Implement ${methodName} logic
+    // Update state based on event
+    // Example: emit(state.copyWith(field: newValue));
     // emit(NewState());
   }
 `;
@@ -496,7 +499,8 @@ ${bloc.events
     ${e.name} event,
     Emitter<${names.state}> emit,
   ) async {
-    // TODO: Implement ${e.name} handler
+    // Handle event and emit new state
+    // Example: emit(SuccessState(data: event.data));
     // emit(NewState());
   }
 `
