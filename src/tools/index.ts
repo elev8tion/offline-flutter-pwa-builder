@@ -43,6 +43,9 @@ import { DESIGN_TOOLS, handleDesignTool, type DesignToolContext, type DesignModu
 // Phase 12: Analysis Module
 import { ANALYSIS_TOOLS, handleAnalysisTool, type AnalysisToolContext, type AnalysisModuleConfig } from "../modules/analysis/index.js";
 
+// Phase 13: GitHub Module
+import { GITHUB_TOOLS, handleGithubTool } from "../modules/github/index.js";
+
 // ============================================================================
 // TOOL SCHEMAS (Zod validation)
 // ============================================================================
@@ -365,6 +368,9 @@ export function getTools(): Tool[] {
 
     // ===== PHASE 12: ANALYSIS TOOLS =====
     ...ANALYSIS_TOOLS,
+
+    // ===== PHASE 13: GITHUB TOOLS =====
+    ...GITHUB_TOOLS,
   ];
 }
 
@@ -1208,6 +1214,17 @@ export async function handleToolCall(
       };
 
       return handleAnalysisTool(name, args, analysisCtx);
+    }
+
+    // ===== PHASE 13: GITHUB TOOLS =====
+    case "github_clone_repository":
+    case "github_analyze_flutter_project":
+    case "github_extract_models":
+    case "github_extract_screens":
+    case "github_create_rebuild_schema":
+    case "github_rebuild_project":
+    case "github_import_and_rebuild": {
+      return handleGithubTool(name, args);
     }
 
     default:

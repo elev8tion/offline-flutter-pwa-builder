@@ -42,6 +42,9 @@ import { BUILD_MODULE, BUILD_TEMPLATES } from "./modules/build/index.js";
 // Design Module
 import { DesignModule, DESIGN_TEMPLATES } from "./modules/design/index.js";
 
+// GitHub Module
+import { GITHUB_MODULE } from "./modules/github/index.js";
+
 // Initialize core components
 const fileSystem = new LocalFileSystem();
 const templateEngine = new TemplateEngine();
@@ -61,6 +64,7 @@ moduleSystem.register(STATE_MODULE);
 moduleSystem.register(SECURITY_MODULE);
 moduleSystem.register(BUILD_MODULE);
 moduleSystem.register(DesignModule);
+moduleSystem.register(GITHUB_MODULE);
 
 // Register templates from modules
 for (const template of DRIFT_TEMPLATES) {
