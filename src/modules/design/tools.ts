@@ -13,6 +13,21 @@ import {
   CurveType,
   hexToFlutterColor,
   curveToFlutter,
+  alphaToHex,
+  extractHexColor,
+  EdcDesignTokensConfig,
+  EdcGlassGradientsConfig,
+  EdcWcagContrastConfig,
+  DEFAULT_EDC_DESIGN_TOKENS,
+  DEFAULT_EDC_GLASS_GRADIENTS,
+  DEFAULT_EDC_WCAG_CONFIG,
+  EdcDesignTokensConfigSchema,
+  EdcGlassGradientsConfigSchema,
+  EdcWcagContrastConfigSchema,
+  wcagContrastRatio,
+  meetsWcagAA,
+  meetsWcagAAA,
+  getWcagContrastReport,
 } from "./config.js";
 
 // ============================================================================
@@ -40,6 +55,27 @@ export const CreateAnimationInputSchema = z.object({
 export const GenerateDesignTokensInputSchema = z.object({
   projectId: z.string().describe("Project ID"),
   format: z.enum(["dart", "json", "css"]).optional().describe("Output format"),
+});
+
+// ============================================================================
+// EDC DESIGN SYSTEM TOOL INPUT SCHEMAS
+// ============================================================================
+
+export const GenerateEdcTokensInputSchema = z.object({
+  projectId: z.string().describe("Project ID"),
+  config: EdcDesignTokensConfigSchema.optional().describe("Custom design token configuration"),
+});
+
+export const GenerateGlassGradientsInputSchema = z.object({
+  projectId: z.string().describe("Project ID"),
+  config: EdcGlassGradientsConfigSchema.optional().describe("Custom glass gradients configuration"),
+});
+
+export const GenerateWcagContrastInputSchema = z.object({
+  projectId: z.string().describe("Project ID"),
+  config: EdcWcagContrastConfigSchema.optional().describe("Custom WCAG contrast configuration"),
+  foreground: z.string().optional().describe("Foreground color (hex) to check contrast"),
+  background: z.string().optional().describe("Background color (hex) to check contrast"),
 });
 
 // ============================================================================
@@ -95,6 +131,100 @@ export const DESIGN_TOOLS: Tool[] = [
           enum: ["dart", "json", "css"],
           description: "Output format",
         },
+      },
+      required: ["projectId"],
+    },
+  },
+  // ============================================================================
+  // EDC DESIGN SYSTEM TOOLS
+  // ============================================================================
+  {
+    name: "design_generate_edc_tokens",
+    description: "Generate EDC design token system with AppSpacing, AppColors, AppRadius, AppBorders, AppAnimations, AppSizes, AppBlur, and ThemeExtension.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", description: "Project ID" },
+        config: {
+          type: "object",
+          description: "Custom design token configuration",
+          properties: {
+            spacing: { type: "object", description: "Spacing config (xs, sm, md, lg, xl, xxl, xxxl, huge)" },
+            colors: { type: "object", description: "Color config with text/glass/border alpha values" },
+            radius: { type: "object", description: "Border radius config (xs, sm, md, lg, xl, xxl, pill)" },
+            animations: { type: "object", description: "Animation timing config" },
+            sizes: { type: "object", description: "Component sizes config" },
+            blur: { type: "object", description: "Blur strength config (light, medium, strong, veryStrong)" },
+          },
+        },
+      },
+      required: ["projectId"],
+    },
+  },
+  {
+    name: "design_generate_gradients",
+    description: "Generate glassmorphic gradient system with 4 glass levels, status gradients, background gradients, and helper methods.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", description: "Project ID" },
+        config: {
+          type: "object",
+          description: "Custom glass gradients configuration",
+          properties: {
+            glass: {
+              type: "object",
+              description: "Glass intensity levels (subtle, medium, strong, veryStrong)",
+            },
+            colors: {
+              type: "object",
+              description: "Theme colors for gradients (primary, accent, gold)",
+            },
+            background: {
+              type: "object",
+              description: "Background gradient colors (dark, light)",
+            },
+            status: {
+              type: "object",
+              description: "Status colors (success, warning, error, info)",
+            },
+          },
+        },
+      },
+      required: ["projectId"],
+    },
+  },
+  {
+    name: "design_generate_wcag",
+    description: "Generate WCAG 2.1 contrast calculator with AA/AAA checking, relative luminance calculation, and theme verification.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", description: "Project ID" },
+        config: {
+          type: "object",
+          description: "WCAG configuration",
+          properties: {
+            includeVerification: {
+              type: "boolean",
+              description: "Include theme verification debug helper (default: true)",
+            },
+            verificationPairs: {
+              type: "array",
+              description: "Color pairs to verify (name, foreground, background)",
+              items: {
+                type: "object",
+                properties: {
+                  name: { type: "string" },
+                  foreground: { type: "string" },
+                  background: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+        foreground: { type: "string", description: "Foreground color (hex) to check contrast" },
+        background: { type: "string", description: "Background color (hex) to check contrast" },
       },
       required: ["projectId"],
     },
@@ -313,6 +443,189 @@ ${tokensCode}
 }
 
 // ============================================================================
+// EDC DESIGN SYSTEM HANDLERS
+// ============================================================================
+
+async function handleGenerateEdcTokens(
+  args: unknown,
+  ctx: DesignToolContext
+): Promise<{ content: Array<{ type: "text"; text: string }> }> {
+  const input = GenerateEdcTokensInputSchema.parse(args);
+
+  const project = ctx.getProject(input.projectId);
+  if (!project) {
+    throw new Error(`Project not found: ${input.projectId}`);
+  }
+
+  // Merge with defaults
+  const config: EdcDesignTokensConfig = {
+    ...DEFAULT_EDC_DESIGN_TOKENS,
+    ...input.config,
+    spacing: { ...DEFAULT_EDC_DESIGN_TOKENS.spacing, ...input.config?.spacing },
+    colors: {
+      ...DEFAULT_EDC_DESIGN_TOKENS.colors,
+      ...input.config?.colors,
+      textAlpha: { ...DEFAULT_EDC_DESIGN_TOKENS.colors.textAlpha, ...input.config?.colors?.textAlpha },
+      glassAlpha: { ...DEFAULT_EDC_DESIGN_TOKENS.colors.glassAlpha, ...input.config?.colors?.glassAlpha },
+      borderAlpha: { ...DEFAULT_EDC_DESIGN_TOKENS.colors.borderAlpha, ...input.config?.colors?.borderAlpha },
+    },
+    radius: { ...DEFAULT_EDC_DESIGN_TOKENS.radius, ...input.config?.radius },
+    animations: { ...DEFAULT_EDC_DESIGN_TOKENS.animations, ...input.config?.animations },
+    sizes: { ...DEFAULT_EDC_DESIGN_TOKENS.sizes, ...input.config?.sizes },
+    blur: { ...DEFAULT_EDC_DESIGN_TOKENS.blur, ...input.config?.blur },
+  };
+
+  // Generate code
+  const tokensCode = generateEdcTokensCode(config);
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: `Generated EDC Design Token System for ${project.name}
+
+Files generated:
+- lib/theme/app_theme_extensions.dart
+
+Configuration:
+- Spacing: 8-point scale (xs: ${config.spacing.xs}px to huge: ${config.spacing.huge}px)
+- Radius: xs: ${config.radius.xs}px to pill: ${config.radius.pill}px
+- Blur: light: ${config.blur.light}px to veryStrong: ${config.blur.veryStrong}px
+- Colors: Primary ${config.colors.primary}, Accent ${config.colors.accent}
+
+lib/theme/app_theme_extensions.dart:
+\`\`\`dart
+${tokensCode}
+\`\`\``,
+      },
+    ],
+  };
+}
+
+async function handleGenerateGlassGradients(
+  args: unknown,
+  ctx: DesignToolContext
+): Promise<{ content: Array<{ type: "text"; text: string }> }> {
+  const input = GenerateGlassGradientsInputSchema.parse(args);
+
+  const project = ctx.getProject(input.projectId);
+  if (!project) {
+    throw new Error(`Project not found: ${input.projectId}`);
+  }
+
+  // Merge with defaults
+  const config: EdcGlassGradientsConfig = {
+    ...DEFAULT_EDC_GLASS_GRADIENTS,
+    ...input.config,
+    glass: { ...DEFAULT_EDC_GLASS_GRADIENTS.glass, ...input.config?.glass },
+    colors: { ...DEFAULT_EDC_GLASS_GRADIENTS.colors, ...input.config?.colors },
+    background: {
+      ...DEFAULT_EDC_GLASS_GRADIENTS.background,
+      ...input.config?.background,
+      dark: { ...DEFAULT_EDC_GLASS_GRADIENTS.background.dark, ...input.config?.background?.dark },
+      light: { ...DEFAULT_EDC_GLASS_GRADIENTS.background.light, ...input.config?.background?.light },
+    },
+    status: { ...DEFAULT_EDC_GLASS_GRADIENTS.status, ...input.config?.status },
+  };
+
+  // Generate code
+  const gradientsCode = generateGlassGradientsCode(config);
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: `Generated Glassmorphic Gradient System for ${project.name}
+
+Files generated:
+- lib/theme/app_gradients.dart
+
+Glass Levels:
+- glassSubtle: ${config.glass.subtle.start * 100}% -> ${config.glass.subtle.end * 100}%
+- glassMedium: ${config.glass.medium.start * 100}% -> ${config.glass.medium.end * 100}%
+- glassStrong: ${config.glass.strong.start * 100}% -> ${config.glass.strong.end * 100}%
+- glassVeryStrong: ${config.glass.veryStrong.start * 100}% -> ${config.glass.veryStrong.end * 100}%
+
+Status Gradients: success, warning, error, info
+Helper Methods: customGlass(), customColored(), spotlight(), getGlassByLevel()
+
+lib/theme/app_gradients.dart:
+\`\`\`dart
+${gradientsCode}
+\`\`\``,
+      },
+    ],
+  };
+}
+
+async function handleGenerateWcag(
+  args: unknown,
+  ctx: DesignToolContext
+): Promise<{ content: Array<{ type: "text"; text: string }> }> {
+  const input = GenerateWcagContrastInputSchema.parse(args);
+
+  const project = ctx.getProject(input.projectId);
+  if (!project) {
+    throw new Error(`Project not found: ${input.projectId}`);
+  }
+
+  // Merge with defaults
+  const config: EdcWcagContrastConfig = {
+    ...DEFAULT_EDC_WCAG_CONFIG,
+    ...input.config,
+  };
+
+  // Generate code
+  const wcagCode = generateWcagContrastCode(config);
+
+  // If foreground and background provided, include a contrast check
+  let contrastReport = "";
+  if (input.foreground && input.background) {
+    const ratio = wcagContrastRatio(input.foreground, input.background);
+    const passAA = meetsWcagAA(input.foreground, input.background);
+    const passAAA = meetsWcagAAA(input.foreground, input.background);
+    const report = getWcagContrastReport(input.foreground, input.background);
+
+    contrastReport = `
+Contrast Check:
+- Foreground: ${input.foreground}
+- Background: ${input.background}
+- Ratio: ${ratio.toFixed(2)}:1
+- WCAG AA (4.5:1): ${passAA ? "PASS" : "FAIL"}
+- WCAG AAA (7:1): ${passAAA ? "PASS" : "FAIL"}
+- Full Report: ${report}
+`;
+  }
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: `Generated WCAG Contrast Calculator for ${project.name}
+
+Files generated:
+- lib/theme/wcag_contrast.dart
+
+Features:
+- _relativeLuminance(): sRGB gamma-corrected luminance calculation
+- contrastRatio(): Calculate contrast ratio between two colors
+- meetsWcagAA(): Check 4.5:1 minimum for normal text
+- meetsWcagAALarge(): Check 3:1 minimum for large text
+- meetsWcagAAA(): Check 7:1 minimum for enhanced contrast
+- getContrastReport(): Human-readable pass/fail report
+- suggestAccessibleColor(): Auto-suggest accessible alternatives
+${config.includeVerification ? "- verifyThemeContrast(): Debug helper for theme validation" : ""}
+${contrastReport}
+lib/theme/wcag_contrast.dart:
+\`\`\`dart
+${wcagCode}
+\`\`\``,
+      },
+    ],
+  };
+}
+
+// ============================================================================
 // MAIN HANDLER
 // ============================================================================
 
@@ -328,6 +641,13 @@ export async function handleDesignTool(
       return handleCreateAnimation(args, ctx);
     case "design_generate_tokens":
       return handleGenerateDesignTokens(args, ctx);
+    // EDC Design System tools
+    case "design_generate_edc_tokens":
+      return handleGenerateEdcTokens(args, ctx);
+    case "design_generate_gradients":
+      return handleGenerateGlassGradients(args, ctx);
+    case "design_generate_wcag":
+      return handleGenerateWcag(args, ctx);
     default:
       throw new Error(`Unknown design tool: ${toolName}`);
   }
@@ -646,5 +966,716 @@ function generateCssTokens(config: DesignModuleConfig | undefined): string {
   --font-body-large: ${theme?.typography.bodyLarge || 16}px;
   --font-body-medium: ${theme?.typography.bodyMedium || 14}px;
   --font-body-small: ${theme?.typography.bodySmall || 12}px;
+}`;
+}
+
+// ============================================================================
+// EDC DESIGN SYSTEM CODE GENERATORS
+// ============================================================================
+
+function generateEdcTokensCode(config: EdcDesignTokensConfig): string {
+  return `// GENERATED CODE - DO NOT MODIFY BY HAND
+// EDC Design Token System
+// Generated by offline-flutter-pwa-builder
+
+import 'package:flutter/material.dart';
+
+// ============================================================================
+// THEME EXTENSION - Use with Theme.of(context).extension<AppThemeExtension>()
+// ============================================================================
+
+@immutable
+class AppThemeExtension extends ThemeExtension<AppThemeExtension> {
+  const AppThemeExtension({
+    required this.appSpacing,
+    required this.appColors,
+    required this.appRadius,
+    required this.appBorders,
+    required this.appAnimations,
+    required this.appSizes,
+    required this.appBlur,
+  });
+
+  final AppSpacing appSpacing;
+  final AppColors appColors;
+  final AppRadius appRadius;
+  final AppBorders appBorders;
+  final AppAnimations appAnimations;
+  final AppSizes appSizes;
+  final AppBlur appBlur;
+
+  @override
+  ThemeExtension<AppThemeExtension> copyWith({
+    AppSpacing? appSpacing,
+    AppColors? appColors,
+    AppRadius? appRadius,
+    AppBorders? appBorders,
+    AppAnimations? appAnimations,
+    AppSizes? appSizes,
+    AppBlur? appBlur,
+  }) {
+    return AppThemeExtension(
+      appSpacing: appSpacing ?? this.appSpacing,
+      appColors: appColors ?? this.appColors,
+      appRadius: appRadius ?? this.appRadius,
+      appBorders: appBorders ?? this.appBorders,
+      appAnimations: appAnimations ?? this.appAnimations,
+      appSizes: appSizes ?? this.appSizes,
+      appBlur: appBlur ?? this.appBlur,
+    );
+  }
+
+  @override
+  ThemeExtension<AppThemeExtension> lerp(
+    ThemeExtension<AppThemeExtension>? other,
+    double t,
+  ) {
+    if (other is! AppThemeExtension) {
+      return this;
+    }
+    return this; // Tokens don't need interpolation
+  }
+
+  static const AppThemeExtension defaults = AppThemeExtension(
+    appSpacing: AppSpacing(),
+    appColors: AppColors(),
+    appRadius: AppRadius(),
+    appBorders: AppBorders(),
+    appAnimations: AppAnimations(),
+    appSizes: AppSizes(),
+    appBlur: AppBlur(),
+  );
+}
+
+// ============================================================================
+// SPACING TOKENS
+// ============================================================================
+
+class AppSpacing {
+  const AppSpacing();
+
+  static const double xs = ${config.spacing.xs};
+  static const double sm = ${config.spacing.sm};
+  static const double md = ${config.spacing.md};
+  static const double lg = ${config.spacing.lg};
+  static const double xl = ${config.spacing.xl};
+  static const double xxl = ${config.spacing.xxl};
+  static const double xxxl = ${config.spacing.xxxl};
+  static const double huge = ${config.spacing.huge};
+
+  static const EdgeInsets screenPadding = EdgeInsets.all(xl);
+  static const EdgeInsets screenPaddingLarge = EdgeInsets.all(xxl);
+  static const EdgeInsets cardPadding = EdgeInsets.all(lg);
+  static const EdgeInsets cardPaddingLarge = EdgeInsets.all(xl);
+  static const EdgeInsets buttonPadding = EdgeInsets.symmetric(horizontal: xxl, vertical: lg);
+  static const EdgeInsets inputPadding = EdgeInsets.symmetric(horizontal: xl, vertical: lg);
+
+  static const EdgeInsets horizontalSm = EdgeInsets.symmetric(horizontal: sm);
+  static const EdgeInsets horizontalMd = EdgeInsets.symmetric(horizontal: md);
+  static const EdgeInsets horizontalLg = EdgeInsets.symmetric(horizontal: lg);
+  static const EdgeInsets horizontalXl = EdgeInsets.symmetric(horizontal: xl);
+  static const EdgeInsets horizontalXxl = EdgeInsets.symmetric(horizontal: xxl);
+
+  static const EdgeInsets verticalSm = EdgeInsets.symmetric(vertical: sm);
+  static const EdgeInsets verticalMd = EdgeInsets.symmetric(vertical: md);
+  static const EdgeInsets verticalLg = EdgeInsets.symmetric(vertical: lg);
+  static const EdgeInsets verticalXl = EdgeInsets.symmetric(vertical: xl);
+  static const EdgeInsets verticalXxl = EdgeInsets.symmetric(vertical: xxl);
+
+  static const double gapXs = xs;
+  static const double gapSm = sm;
+  static const double gapMd = md;
+  static const double gapLg = lg;
+  static const double gapXl = xl;
+  static const double gapXxl = xxl;
+}
+
+// ============================================================================
+// COLOR TOKENS
+// ============================================================================
+
+class AppColors {
+  const AppColors();
+
+  static const Color primary = ${hexToFlutterColor(config.colors.primary)};
+  static const Color accent = ${hexToFlutterColor(config.colors.accent)};
+  static const Color secondary = ${hexToFlutterColor(config.colors.secondary)};
+  ${config.colors.gold ? `static const Color gold = ${hexToFlutterColor(config.colors.gold)};` : ""}
+
+  static const Color primaryText = Colors.white;
+  static final Color secondaryText = Colors.white.withValues(alpha: ${config.colors.textAlpha.secondary});
+  static final Color tertiaryText = Colors.white.withValues(alpha: ${config.colors.textAlpha.tertiary});
+  static final Color disabledText = Colors.white.withValues(alpha: ${config.colors.textAlpha.disabled});
+
+  static const Color darkPrimaryText = Colors.black87;
+  static final Color darkSecondaryText = Colors.black.withValues(alpha: 0.6);
+  static final Color darkTertiaryText = Colors.black.withValues(alpha: 0.4);
+
+  static final Color accentSubtle = accent.withValues(alpha: 0.6);
+  static final Color accentVerySubtle = accent.withValues(alpha: 0.3);
+
+  static final Color glassOverlayLight = Colors.white.withValues(alpha: ${config.colors.glassAlpha.light});
+  static final Color glassOverlayMedium = Colors.white.withValues(alpha: ${config.colors.glassAlpha.medium});
+  static final Color glassOverlaySubtle = Colors.white.withValues(alpha: ${config.colors.glassAlpha.subtle});
+
+  static final Color primaryBorder = Colors.white.withValues(alpha: ${config.colors.borderAlpha.primary});
+  static final Color accentBorder = accent.withValues(alpha: ${config.colors.borderAlpha.accent});
+  static final Color subtleBorder = Colors.white.withValues(alpha: ${config.colors.borderAlpha.subtle});
+
+  static const Color success = ${hexToFlutterColor(config.colors.success)};
+  static const Color warning = ${hexToFlutterColor(config.colors.warning)};
+  static const Color error = ${hexToFlutterColor(config.colors.error)};
+  static const Color info = ${hexToFlutterColor(config.colors.info)};
+}
+
+// ============================================================================
+// RADIUS TOKENS
+// ============================================================================
+
+class AppRadius {
+  const AppRadius();
+
+  static const double xs = ${config.radius.xs};
+  static const double sm = ${config.radius.sm};
+  static const double md = ${config.radius.md};
+  static const double lg = ${config.radius.lg};
+  static const double xl = ${config.radius.xl};
+  static const double xxl = ${config.radius.xxl};
+  static const double pill = ${config.radius.pill};
+
+  static final BorderRadius smallRadius = BorderRadius.circular(sm);
+  static final BorderRadius mediumRadius = BorderRadius.circular(md);
+  static final BorderRadius cardRadius = BorderRadius.circular(lg);
+  static final BorderRadius largeCardRadius = BorderRadius.circular(xl);
+  static final BorderRadius buttonRadius = BorderRadius.circular(xxl);
+  static final BorderRadius pillRadius = BorderRadius.circular(pill);
+}
+
+// ============================================================================
+// BORDER TOKENS
+// ============================================================================
+
+class AppBorders {
+  const AppBorders();
+
+  static final Border primaryGlass = Border.all(
+    color: AppColors.accentBorder,
+    width: 2.0,
+  );
+
+  static final Border primaryGlassSubtle = Border.all(
+    color: AppColors.accent.withValues(alpha: 0.5),
+    width: 1.5,
+  );
+
+  static final Border primaryGlassThin = Border.all(
+    color: AppColors.accent.withValues(alpha: 0.3),
+    width: 1.0,
+  );
+
+  static final Border subtle = Border.all(
+    color: AppColors.primaryBorder,
+    width: 1.0,
+  );
+
+  static final Border subtleThick = Border.all(
+    color: AppColors.primaryBorder,
+    width: 2.0,
+  );
+
+  static final Border iconContainer = Border.all(
+    color: AppColors.accentBorder,
+    width: 1.5,
+  );
+
+  static const Border none = Border();
+}
+
+// ============================================================================
+// ANIMATION TOKENS
+// ============================================================================
+
+class AppAnimations {
+  const AppAnimations();
+
+  static const Duration instant = Duration(milliseconds: ${config.animations.instant});
+  static const Duration fast = Duration(milliseconds: ${config.animations.fast});
+  static const Duration normal = Duration(milliseconds: ${config.animations.normal});
+  static const Duration slow = Duration(milliseconds: ${config.animations.slow});
+  static const Duration verySlow = Duration(milliseconds: ${config.animations.verySlow});
+
+  static const Duration sequentialShort = Duration(milliseconds: ${config.animations.sequentialShort});
+  static const Duration sequentialMedium = Duration(milliseconds: ${config.animations.sequentialMedium});
+  static const Duration sequentialLong = Duration(milliseconds: ${config.animations.sequentialLong});
+
+  static const Duration fadeIn = slow;
+  static const Duration slideIn = normal;
+  static const Duration scaleIn = normal;
+  static const Duration shimmer = Duration(milliseconds: ${config.animations.shimmer});
+
+  static const Duration baseDelay = slow;
+  static const Duration sectionDelay = Duration(milliseconds: ${config.animations.sectionDelay});
+  static const Duration press = Duration(milliseconds: ${config.animations.press});
+}
+
+// ============================================================================
+// SIZE TOKENS
+// ============================================================================
+
+class AppSizes {
+  const AppSizes();
+
+  static const double iconXs = ${config.sizes.iconXs};
+  static const double iconSm = ${config.sizes.iconSm};
+  static const double iconMd = ${config.sizes.iconMd};
+  static const double iconLg = ${config.sizes.iconLg};
+  static const double iconXl = ${config.sizes.iconXl};
+
+  static const double avatarSm = ${config.sizes.avatarSm};
+  static const double avatarMd = ${config.sizes.avatarMd};
+  static const double avatarLg = ${config.sizes.avatarLg};
+  static const double avatarXl = ${config.sizes.avatarXl};
+
+  static const double statCardWidth = ${config.sizes.statCardWidth};
+  static const double statCardHeight = ${config.sizes.statCardHeight};
+  static const double quickActionWidth = ${config.sizes.quickActionWidth};
+  static const double quickActionHeight = ${config.sizes.quickActionHeight};
+
+  static const double appBarHeight = ${config.sizes.appBarHeight};
+  static const double appBarIconSize = iconMd;
+
+  static const double buttonHeightSm = ${config.sizes.buttonHeightSm};
+  static const double buttonHeightMd = ${config.sizes.buttonHeightMd};
+  static const double buttonHeightLg = ${config.sizes.buttonHeightLg};
+}
+
+// ============================================================================
+// BLUR TOKENS
+// ============================================================================
+
+class AppBlur {
+  const AppBlur();
+
+  static const double light = ${config.blur.light};
+  static const double medium = ${config.blur.medium};
+  static const double strong = ${config.blur.strong};
+  static const double veryStrong = ${config.blur.veryStrong};
+}`;
+}
+
+function generateGlassGradientsCode(config: EdcGlassGradientsConfig): string {
+  return `// GENERATED CODE - DO NOT MODIFY BY HAND
+// Glassmorphic Gradient System
+// Generated by offline-flutter-pwa-builder
+
+import 'package:flutter/material.dart';
+
+class AppGradients {
+  AppGradients._();
+
+  // ============================================================================
+  // GLASS GRADIENTS
+  // ============================================================================
+
+  static const LinearGradient glassSubtle = LinearGradient(
+    colors: [
+      Color(0x${alphaToHex(config.glass.subtle.start)}FFFFFF),
+      Color(0x${alphaToHex(config.glass.subtle.end)}FFFFFF),
+    ],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  static const LinearGradient glassMedium = LinearGradient(
+    colors: [
+      Color(0x${alphaToHex(config.glass.medium.start)}FFFFFF),
+      Color(0x${alphaToHex(config.glass.medium.end)}FFFFFF),
+    ],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  static const LinearGradient glassStrong = LinearGradient(
+    colors: [
+      Color(0x${alphaToHex(config.glass.strong.start)}FFFFFF),
+      Color(0x${alphaToHex(config.glass.strong.end)}FFFFFF),
+    ],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  static const LinearGradient glassVeryStrong = LinearGradient(
+    colors: [
+      Color(0x${alphaToHex(config.glass.veryStrong.start)}FFFFFF),
+      Color(0x${alphaToHex(config.glass.veryStrong.end)}FFFFFF),
+    ],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  // ============================================================================
+  // THEME GRADIENTS
+  // ============================================================================
+
+  static const LinearGradient primary = LinearGradient(
+    colors: [
+      ${hexToFlutterColor(config.colors.primary)},
+      ${hexToFlutterColor(config.colors.accent)},
+    ],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  ${config.colors.gold ? `static const LinearGradient goldAccent = LinearGradient(
+    colors: [
+      Color(0x4D${extractHexColor(config.colors.gold)}),
+      Color(0x1A${extractHexColor(config.colors.gold)}),
+    ],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  static const LinearGradient goldBorder = LinearGradient(
+    colors: [
+      Color(0x99${extractHexColor(config.colors.gold)}),
+      Color(0x66${extractHexColor(config.colors.gold)}),
+    ],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );` : ""}
+
+  // ============================================================================
+  // BACKGROUND GRADIENTS
+  // ============================================================================
+
+  static const LinearGradient backgroundDark = LinearGradient(
+    colors: [
+      ${hexToFlutterColor(config.background.dark.start)},
+      ${hexToFlutterColor(config.background.dark.middle)},
+      ${hexToFlutterColor(config.background.dark.end)},
+    ],
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+  );
+
+  static const LinearGradient backgroundLight = LinearGradient(
+    colors: [
+      ${hexToFlutterColor(config.background.light.start)},
+      ${hexToFlutterColor(config.background.light.end)},
+    ],
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+  );
+
+  // ============================================================================
+  // BUTTON GRADIENTS
+  // ============================================================================
+
+  static const LinearGradient button = glassMedium;
+
+  static const LinearGradient buttonDisabled = LinearGradient(
+    colors: [
+      Color(0x1A808080),
+      Color(0x0D808080),
+    ],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  // ============================================================================
+  // STATUS GRADIENTS
+  // ============================================================================
+
+  static const LinearGradient success = LinearGradient(
+    colors: [
+      Color(0x4D${extractHexColor(config.status.success)}),
+      Color(0x1A${extractHexColor(config.status.success)}),
+    ],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  static const LinearGradient warning = LinearGradient(
+    colors: [
+      Color(0x4D${extractHexColor(config.status.warning)}),
+      Color(0x1A${extractHexColor(config.status.warning)}),
+    ],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  static const LinearGradient error = LinearGradient(
+    colors: [
+      Color(0x4D${extractHexColor(config.status.error)}),
+      Color(0x1A${extractHexColor(config.status.error)}),
+    ],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  static const LinearGradient info = LinearGradient(
+    colors: [
+      Color(0x4D${extractHexColor(config.status.info)}),
+      Color(0x1A${extractHexColor(config.status.info)}),
+    ],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  // ============================================================================
+  // HELPER METHODS
+  // ============================================================================
+
+  static LinearGradient customGlass(double startAlpha, double endAlpha) {
+    return LinearGradient(
+      colors: [
+        Color.fromRGBO(255, 255, 255, startAlpha),
+        Color.fromRGBO(255, 255, 255, endAlpha),
+      ],
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+    );
+  }
+
+  static LinearGradient customColored(
+    Color color, {
+    double startAlpha = 0.30,
+    double endAlpha = 0.10,
+  }) {
+    return LinearGradient(
+      colors: [
+        color.withValues(alpha: startAlpha),
+        color.withValues(alpha: endAlpha),
+      ],
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+    );
+  }
+
+  static RadialGradient spotlight(
+    Color color,
+    double maxAlpha, {
+    double radius = 0.8,
+  }) {
+    return RadialGradient(
+      colors: [
+        color.withValues(alpha: maxAlpha),
+        color.withValues(alpha: 0.0),
+      ],
+      radius: radius,
+    );
+  }
+
+  static LinearGradient getGlassByLevel(int level) {
+    switch (level) {
+      case 0:
+        return glassSubtle;
+      case 1:
+        return glassMedium;
+      case 2:
+        return glassStrong;
+      case 3:
+        return glassVeryStrong;
+      default:
+        return glassMedium;
+    }
+  }
+
+  static LinearGradient getStatusGradient(String type) {
+    switch (type.toLowerCase()) {
+      case 'success':
+        return success;
+      case 'warning':
+        return warning;
+      case 'error':
+        return error;
+      case 'info':
+        return info;
+      default:
+        return info;
+    }
+  }
+}`;
+}
+
+function generateWcagContrastCode(config: EdcWcagContrastConfig): string {
+  const verificationCode = config.includeVerification && config.verificationPairs ? `
+  // ============================================================================
+  // THEME VERIFICATION (Debug Only)
+  // ============================================================================
+
+  static void verifyThemeContrast() {
+    debugPrint('\\n===============================================');
+    debugPrint('  WCAG Contrast Verification Report');
+    debugPrint('===============================================\\n');
+
+    final testPairs = <String, List<Color>>{
+${config.verificationPairs.map(p => `      '${p.name}': [${p.foreground}, ${p.background}],`).join("\n")}
+    };
+
+    testPairs.forEach((name, colors) {
+      final report = getContrastReport(colors[0], colors[1]);
+      debugPrint('  \$name: \$report');
+    });
+
+    debugPrint('\\n===============================================\\n');
+  }` : "";
+
+  return `// GENERATED CODE - DO NOT MODIFY BY HAND
+// WCAG Contrast Calculator
+// Generated by offline-flutter-pwa-builder
+
+import 'dart:math';
+import 'package:flutter/material.dart';
+
+class WCAGContrast {
+  WCAGContrast._();
+
+  // ============================================================================
+  // WCAG THRESHOLDS
+  // ============================================================================
+
+  static const double wcagAANormalText = 4.5;
+  static const double wcagAALargeText = 3.0;
+  static const double wcagAAANormalText = 7.0;
+  static const double wcagAAALargeText = 4.5;
+  static const double wcagUIComponents = 3.0;
+
+  // ============================================================================
+  // CORE CALCULATIONS
+  // ============================================================================
+
+  static double _relativeLuminance(Color color) {
+    double r = color.red / 255.0;
+    double g = color.green / 255.0;
+    double b = color.blue / 255.0;
+
+    r = (r <= 0.03928) ? r / 12.92 : pow((r + 0.055) / 1.055, 2.4).toDouble();
+    g = (g <= 0.03928) ? g / 12.92 : pow((g + 0.055) / 1.055, 2.4).toDouble();
+    b = (b <= 0.03928) ? b / 12.92 : pow((b + 0.055) / 1.055, 2.4).toDouble();
+
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  }
+
+  static double contrastRatio(Color foreground, Color background) {
+    double lum1 = _relativeLuminance(foreground) + 0.05;
+    double lum2 = _relativeLuminance(background) + 0.05;
+    return lum1 > lum2 ? lum1 / lum2 : lum2 / lum1;
+  }
+
+  // ============================================================================
+  // WCAG COMPLIANCE CHECKS
+  // ============================================================================
+
+  static bool meetsWcagAA(Color foreground, Color background) {
+    return contrastRatio(foreground, background) >= wcagAANormalText;
+  }
+
+  static bool meetsWcagAALarge(Color foreground, Color background) {
+    return contrastRatio(foreground, background) >= wcagAALargeText;
+  }
+
+  static bool meetsWcagAAA(Color foreground, Color background) {
+    return contrastRatio(foreground, background) >= wcagAAANormalText;
+  }
+
+  static bool meetsWcagAAALarge(Color foreground, Color background) {
+    return contrastRatio(foreground, background) >= wcagAAALargeText;
+  }
+
+  static bool meetsUIComponentRequirement(Color foreground, Color background) {
+    return contrastRatio(foreground, background) >= wcagUIComponents;
+  }
+
+  // ============================================================================
+  // REPORTING
+  // ============================================================================
+
+  static String getContrastReport(Color foreground, Color background) {
+    double ratio = contrastRatio(foreground, background);
+    bool passAA = ratio >= wcagAANormalText;
+    bool passAAA = ratio >= wcagAAANormalText;
+
+    final aaStatus = passAA ? '[AA Pass]' : '[AA Fail]';
+    final aaaStatus = passAAA ? '[AAA Pass]' : '[AAA Fail]';
+
+    return '\${ratio.toStringAsFixed(2)}:1 \$aaStatus \$aaaStatus';
+  }
+
+  static Map<String, dynamic> getDetailedReport(Color foreground, Color background) {
+    final ratio = contrastRatio(foreground, background);
+    return {
+      'ratio': ratio,
+      'aa_normal': ratio >= wcagAANormalText,
+      'aa_large': ratio >= wcagAALargeText,
+      'aaa_normal': ratio >= wcagAAANormalText,
+      'aaa_large': ratio >= wcagAAALargeText,
+      'ui_components': ratio >= wcagUIComponents,
+    };
+  }
+
+  static Color? suggestAccessibleColor(
+    Color foreground,
+    Color background, {
+    double targetRatio = wcagAANormalText,
+  }) {
+    final currentRatio = contrastRatio(foreground, background);
+    if (currentRatio >= targetRatio) {
+      return foreground;
+    }
+
+    Color? lighter = _adjustBrightness(foreground, 1.2, targetRatio, background);
+    Color? darker = _adjustBrightness(foreground, 0.8, targetRatio, background);
+
+    if (lighter != null && darker != null) {
+      final lighterDiff = (lighter.computeLuminance() - foreground.computeLuminance()).abs();
+      final darkerDiff = (darker.computeLuminance() - foreground.computeLuminance()).abs();
+      return lighterDiff < darkerDiff ? lighter : darker;
+    }
+
+    return lighter ?? darker;
+  }
+
+  static Color? _adjustBrightness(
+    Color color,
+    double factor,
+    double targetRatio,
+    Color background,
+  ) {
+    Color adjusted = color;
+    for (int i = 0; i < 20; i++) {
+      final hsv = HSVColor.fromColor(adjusted);
+      final newValue = (hsv.value * factor).clamp(0.0, 1.0);
+      adjusted = hsv.withValue(newValue).toColor();
+
+      if (contrastRatio(adjusted, background) >= targetRatio) {
+        return adjusted;
+      }
+    }
+    return null;
+  }
+${verificationCode}
+}
+
+// ============================================================================
+// EXTENSION
+// ============================================================================
+
+extension WCAGColorExtension on Color {
+  bool meetsWcagAA(Color background) {
+    return WCAGContrast.meetsWcagAA(this, background);
+  }
+
+  bool meetsWcagAAA(Color background) {
+    return WCAGContrast.meetsWcagAAA(this, background);
+  }
+
+  double contrastWith(Color background) {
+    return WCAGContrast.contrastRatio(this, background);
+  }
+
+  String accessibilityReport(Color background) {
+    return WCAGContrast.getContrastReport(this, background);
+  }
 }`;
 }

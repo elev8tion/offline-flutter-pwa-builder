@@ -135,7 +135,7 @@ describe("Design Module", () => {
     it("should export design tools", () => {
       expect(DESIGN_TOOLS).toBeDefined();
       expect(Array.isArray(DESIGN_TOOLS)).toBe(true);
-      expect(DESIGN_TOOLS.length).toBe(3);
+      expect(DESIGN_TOOLS.length).toBe(6); // 3 original + 3 EDC tools
     });
 
     it("should have design_generate_theme tool", () => {

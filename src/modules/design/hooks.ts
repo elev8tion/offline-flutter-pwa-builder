@@ -13,6 +13,8 @@ import {
   DesignModuleConfig,
   DEFAULT_DESIGN_CONFIG,
   hexToFlutterColor,
+  alphaToHex,
+  extractHexColor,
 } from "./config.js";
 
 // ============================================================================
@@ -28,6 +30,38 @@ export function registerDesignHelpers(handlebars: typeof import("handlebars")): 
   // Format spacing value
   handlebars.registerHelper("spacing", (value: number) => {
     return `${value}.0`;
+  });
+
+  // Convert alpha (0-1) to 2-digit hex (for glass gradients)
+  handlebars.registerHelper("hexAlpha", (alpha: number) => {
+    return alphaToHex(alpha);
+  });
+
+  // Extract hex color without # prefix
+  handlebars.registerHelper("hexColor", (hex: string) => {
+    return extractHexColor(hex);
+  });
+
+  // Format number as Dart double
+  handlebars.registerHelper("dartDouble", (value: number) => {
+    return Number.isInteger(value) ? `${value}.0` : `${value}`;
+  });
+
+  // Lowercase helper
+  handlebars.registerHelper("lowercase", (str: string) => {
+    return str?.toLowerCase() ?? "";
+  });
+
+  // PascalCase helper
+  handlebars.registerHelper("pascalCase", (str: string) => {
+    if (!str) return "";
+    return str.charAt(0).toUpperCase() + str.slice(1);
+  });
+
+  // SnakeCase helper
+  handlebars.registerHelper("snakeCase", (str: string) => {
+    if (!str) return "";
+    return str.replace(/([A-Z])/g, "_$1").toLowerCase().replace(/^_/, "");
   });
 }
 

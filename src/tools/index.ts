@@ -937,7 +937,10 @@ export async function handleToolCall(
     // ===== PHASE 11: DESIGN TOOLS =====
     case "design_generate_theme":
     case "design_create_animation":
-    case "design_generate_tokens": {
+    case "design_generate_tokens":
+    case "design_generate_edc_tokens":
+    case "design_generate_gradients":
+    case "design_generate_wcag": {
       // Create Design tool context
       const designCtx: DesignToolContext = {
         getProject: (id: string) => context.projectEngine.get(id),
