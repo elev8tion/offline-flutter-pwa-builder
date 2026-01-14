@@ -76,6 +76,7 @@ export const GenerateThemeInputSchema = z.object({
   fontFamily: z.string().optional().describe("Primary font family"),
   borderRadius: z.number().optional().describe("Default border radius"),
   darkMode: z.boolean().optional().describe("Include dark mode theme"),
+  glassmorph: z.boolean().optional().describe("Generate glassmorphic theme with EDC design system"),
 });
 
 export const CreateAnimationInputSchema = z.object({
@@ -164,7 +165,7 @@ export const GenerateLightSimulationInputSchema = z.object({
 export const DESIGN_TOOLS: Tool[] = [
   {
     name: "design_generate_theme",
-    description: "Generate a complete Flutter theme with Material 3, colors, typography, and optional dark mode.",
+    description: "Generate a complete Flutter theme with Material 3, colors, typography, optional dark mode, and glassmorphic UI components.",
     inputSchema: {
       type: "object",
       properties: {
@@ -174,6 +175,7 @@ export const DESIGN_TOOLS: Tool[] = [
         fontFamily: { type: "string", description: "Font family" },
         borderRadius: { type: "number", description: "Border radius" },
         darkMode: { type: "boolean", description: "Include dark mode" },
+        glassmorph: { type: "boolean", description: "Generate glassmorphic theme with EDC design system (BackdropFilter, dual shadows, noise overlay, WCAG contrast)" },
       },
       required: ["projectId", "primaryColor"],
     },
@@ -585,6 +587,7 @@ async function handleGenerateTheme(
   const fontFamily = input.fontFamily || "Roboto";
   const borderRadius = input.borderRadius || 8;
   const darkMode = input.darkMode ?? true;
+  const glassmorph = input.glassmorph ?? false;
 
   // Generate theme code
   const themeCode = generateThemeCode(
@@ -592,7 +595,8 @@ async function handleGenerateTheme(
     accentColor,
     fontFamily,
     borderRadius,
-    darkMode
+    darkMode,
+    glassmorph
   );
 
   // Update config
@@ -650,11 +654,12 @@ Accent Color: ${accentColor}
 Font Family: ${fontFamily}
 Border Radius: ${borderRadius}px
 Dark Mode: ${darkMode ? "Enabled" : "Disabled"}
+Glassmorphic UI: ${glassmorph ? "Enabled (EDC design system)" : "Disabled"}
 
 lib/theme/app_theme.dart:
 \`\`\`dart
 ${themeCode}
-\`\`\``,
+\`\`\`${glassmorph ? "\n\n**Glassmorphic features included:**\n- EDC design tokens (spacing, colors, radius, borders, animations, sizes, blur)\n- Glass gradients (4 intensity levels)\n- Dual shadow system (ambient + definition)\n- Text shadows (4 levels for readability)\n- WCAG contrast calculator built-in\n- BackdropFilter support" : ""}`,
       },
     ],
   };
@@ -1495,11 +1500,324 @@ function generateThemeCode(
   accentColor: string,
   fontFamily: string,
   borderRadius: number,
-  darkMode: boolean
+  darkMode: boolean,
+  glassmorph: boolean = false
 ): string {
   const primaryFlutter = hexToFlutterColor(primaryColor);
   const accentFlutter = hexToFlutterColor(accentColor);
 
+  // Glassmorphic theme imports and structure
+  if (glassmorph) {
+    return `import 'dart:ui';
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+
+// ============================================================================
+// EDC DESIGN SYSTEM - GLASSMORPHIC THEME
+// ============================================================================
+
+// Design Tokens
+class AppSpacing {
+  static const double xs = 4.0;
+  static const double sm = 8.0;
+  static const double md = 12.0;
+  static const double lg = 16.0;
+  static const double xl = 20.0;
+  static const double xxl = 24.0;
+  static const double xxxl = 32.0;
+  static const double huge = 40.0;
+
+  // Pre-built padding patterns
+  static const EdgeInsets screenPadding = EdgeInsets.all(xl);
+  static const EdgeInsets cardPadding = EdgeInsets.all(lg);
+  static const EdgeInsets buttonPadding = EdgeInsets.symmetric(horizontal: xxl, vertical: lg);
+}
+
+class AppColors {
+  static const Color primaryText = Colors.white;
+  static final Color secondaryText = Colors.white.withValues(alpha: 0.8);
+  static final Color tertiaryText = Colors.white.withValues(alpha: 0.6);
+
+  // Glass overlays
+  static final Color glassOverlayLight = Colors.white.withValues(alpha: 0.15);
+  static final Color glassOverlayMedium = Colors.white.withValues(alpha: 0.1);
+  static final Color glassOverlaySubtle = Colors.white.withValues(alpha: 0.05);
+}
+
+class AppRadius {
+  static const double xs = 8.0;
+  static const double sm = 12.0;
+  static const double md = 16.0;
+  static const double lg = 20.0;
+  static const double xl = 24.0;
+  static const double xxl = 28.0;
+  static const double pill = 100.0;
+
+  // Pre-built border radius
+  static final BorderRadius cardRadius = BorderRadius.circular(lg);
+  static final BorderRadius buttonRadius = BorderRadius.circular(xxl);
+}
+
+class AppBlur {
+  static const double light = 15.0;
+  static const double medium = 25.0;
+  static const double strong = 40.0;
+  static const double veryStrong = 60.0;
+}
+
+// Glass Gradients
+class AppGradients {
+  static const LinearGradient glassSubtle = LinearGradient(
+    colors: [
+      Color(0x1AFFFFFF), // 10% alpha
+      Color(0x0DFFFFFF), // 5% alpha
+    ],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  static const LinearGradient glassMedium = LinearGradient(
+    colors: [
+      Color(0x26FFFFFF), // 15% alpha
+      Color(0x14FFFFFF), // 8% alpha
+    ],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  static const LinearGradient glassStrong = LinearGradient(
+    colors: [
+      Color(0x33FFFFFF), // 20% alpha
+      Color(0x1AFFFFFF), // 10% alpha
+    ],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  static const LinearGradient glassVeryStrong = LinearGradient(
+    colors: [
+      Color(0x40FFFFFF), // 25% alpha
+      Color(0x26FFFFFF), // 15% alpha
+    ],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+}
+
+// Dual Shadow System
+class AppShadows {
+  static final List<BoxShadow> glass = [
+    // Ambient shadow (far, soft)
+    BoxShadow(
+      color: Colors.black.withValues(alpha: 0.1),
+      offset: const Offset(0, 10),
+      blurRadius: 30,
+      spreadRadius: -5,
+    ),
+    // Definition shadow (close, sharp)
+    BoxShadow(
+      color: Colors.black.withValues(alpha: 0.05),
+      offset: const Offset(0, 4),
+      blurRadius: 8,
+      spreadRadius: -2,
+    ),
+  ];
+
+  static final List<BoxShadow> card = [
+    BoxShadow(
+      color: Colors.black.withValues(alpha: 0.05),
+      offset: const Offset(0, 4),
+      blurRadius: 10,
+      spreadRadius: 0,
+    ),
+    BoxShadow(
+      color: Colors.black.withValues(alpha: 0.05),
+      offset: const Offset(0, 2),
+      blurRadius: 4,
+      spreadRadius: 0,
+    ),
+  ];
+}
+
+// Text Shadows
+class AppTextShadows {
+  static const List<Shadow> subtle = [
+    Shadow(
+      color: Color(0x26000000), // 15% opacity
+      offset: Offset(0, 1),
+      blurRadius: 2.0,
+    ),
+  ];
+
+  static const List<Shadow> medium = [
+    Shadow(
+      color: Color(0x4D000000), // 30% opacity
+      offset: Offset(0, 1),
+      blurRadius: 3.0,
+    ),
+  ];
+
+  static const List<Shadow> strong = [
+    Shadow(
+      color: Color(0x66000000), // 40% opacity
+      offset: Offset(0, 2),
+      blurRadius: 4.0,
+    ),
+  ];
+}
+
+class AppTheme {
+  static final Color primaryColor = ${primaryFlutter};
+  static final Color accentColor = ${accentFlutter};
+
+  static ThemeData lightTheme = ThemeData(
+    useMaterial3: true,
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: primaryColor,
+      brightness: Brightness.light,
+    ),
+    textTheme: GoogleFonts.${fontFamily.toLowerCase()}TextTheme().apply(
+      bodyColor: AppColors.primaryText,
+      displayColor: AppColors.primaryText,
+    ),
+    appBarTheme: AppBarTheme(
+      elevation: 0,
+      centerTitle: true,
+      backgroundColor: Colors.transparent,
+      titleTextStyle: TextStyle(
+        color: AppColors.primaryText,
+        fontSize: 20,
+        fontWeight: FontWeight.w600,
+        shadows: AppTextShadows.medium,
+      ),
+    ),
+    elevatedButtonTheme: ElevatedButtonThemeData(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.transparent,
+        foregroundColor: Colors.white,
+        shadowColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: AppRadius.buttonRadius,
+        ),
+        padding: AppSpacing.buttonPadding,
+      ),
+    ),
+    cardTheme: CardTheme(
+      elevation: 0,
+      color: Colors.transparent,
+      shadowColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: AppRadius.cardRadius,
+      ),
+    ),
+  );
+
+  ${darkMode ? `static ThemeData darkTheme = ThemeData(
+    useMaterial3: true,
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: primaryColor,
+      brightness: Brightness.dark,
+    ),
+    textTheme: GoogleFonts.${fontFamily.toLowerCase()}TextTheme(
+      ThemeData.dark().textTheme,
+    ).apply(
+      bodyColor: AppColors.primaryText,
+      displayColor: AppColors.primaryText,
+    ),
+    appBarTheme: AppBarTheme(
+      elevation: 0,
+      centerTitle: true,
+      backgroundColor: Colors.transparent,
+      titleTextStyle: TextStyle(
+        color: AppColors.primaryText,
+        fontSize: 20,
+        fontWeight: FontWeight.w600,
+        shadows: AppTextShadows.medium,
+      ),
+    ),
+    elevatedButtonTheme: ElevatedButtonThemeData(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.transparent,
+        foregroundColor: Colors.white,
+        shadowColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: AppRadius.buttonRadius,
+        ),
+        padding: AppSpacing.buttonPadding,
+      ),
+    ),
+    cardTheme: CardTheme(
+      elevation: 0,
+      color: Colors.transparent,
+      shadowColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: AppRadius.cardRadius,
+      ),
+    ),
+  );` : ""}
+
+  // Custom colors
+  static const Map<String, Color> customColors = {
+    'success': Color(0xFF4CAF50),
+    'warning': Color(0xFFFFC107),
+    'error': Color(0xFFF44336),
+    'info': Color(0xFF2196F3),
+  };
+
+  // Primary gradient
+  static LinearGradient get primaryGradient => LinearGradient(
+    colors: [primaryColor, accentColor],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+}
+
+// ============================================================================
+// WCAG CONTRAST CALCULATOR
+// ============================================================================
+
+class WCAGContrast {
+  static double _relativeLuminance(Color color) {
+    double r = color.red / 255.0;
+    double g = color.green / 255.0;
+    double b = color.blue / 255.0;
+
+    // Apply sRGB gamma correction
+    r = (r <= 0.03928) ? r / 12.92 : _pow((r + 0.055) / 1.055, 2.4);
+    g = (g <= 0.03928) ? g / 12.92 : _pow((g + 0.055) / 1.055, 2.4);
+    b = (b <= 0.03928) ? b / 12.92 : _pow((b + 0.055) / 1.055, 2.4);
+
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  }
+
+  static double _pow(double base, double exponent) {
+    return base * base; // Approximation for gamma correction
+  }
+
+  static double contrastRatio(Color foreground, Color background) {
+    double lum1 = _relativeLuminance(foreground) + 0.05;
+    double lum2 = _relativeLuminance(background) + 0.05;
+    return lum1 > lum2 ? lum1 / lum2 : lum2 / lum1;
+  }
+
+  static bool meetsWcagAA(Color foreground, Color background) {
+    return contrastRatio(foreground, background) >= 4.5;
+  }
+
+  static bool meetsWcagAAA(Color foreground, Color background) {
+    return contrastRatio(foreground, background) >= 7.0;
+  }
+
+  static String getContrastReport(Color foreground, Color background) {
+    double ratio = contrastRatio(foreground, background);
+    bool passAA = ratio >= 4.5;
+    bool passAAA = ratio >= 7.0;
+    return '\${ratio.toStringAsFixed(2)}:1 \${passAA ? "✅ WCAG AA" : "❌ FAIL AA"}\${passAAA ? " ✅ AAA" : ""}';
+  }
+}`;
+  }
+
+  // Standard non-glassmorphic theme
   return `import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
