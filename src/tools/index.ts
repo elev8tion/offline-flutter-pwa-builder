@@ -25,6 +25,24 @@ import { SECURITY_TOOLS, handleSecurityTool, type SecurityToolContext, type Secu
 // Phase 6: Build Module
 import { BUILD_TOOLS, handleBuildTool, type BuildToolContext, type BuildModuleConfig } from "../modules/build/index.js";
 
+// Phase 7: Testing Module
+import { TESTING_TOOLS, handleTestingTool, type TestingToolContext, type TestingModuleConfig } from "../modules/testing/index.js";
+
+// Phase 8: Performance Module
+import { PERFORMANCE_TOOLS, handlePerformanceTool, type PerformanceToolContext, type PerformanceModuleConfig } from "../modules/performance/index.js";
+
+// Phase 9: Accessibility Module
+import { ACCESSIBILITY_TOOLS, handleAccessibilityTool, type AccessibilityToolContext, type AccessibilityModuleConfig } from "../modules/accessibility/index.js";
+
+// Phase 10: API Module
+import { API_TOOLS, handleApiTool, type ApiToolContext, type ApiModuleConfig } from "../modules/api/index.js";
+
+// Phase 11: Design Module
+import { DESIGN_TOOLS, handleDesignTool, type DesignToolContext, type DesignModuleConfig } from "../modules/design/index.js";
+
+// Phase 12: Analysis Module
+import { ANALYSIS_TOOLS, handleAnalysisTool, type AnalysisToolContext, type AnalysisModuleConfig } from "../modules/analysis/index.js";
+
 // ============================================================================
 // TOOL SCHEMAS (Zod validation)
 // ============================================================================
@@ -270,6 +288,24 @@ export function getTools(): Tool[] {
 
     // ===== PHASE 6: BUILD TOOLS =====
     ...BUILD_TOOLS,
+
+    // ===== PHASE 7: TESTING TOOLS =====
+    ...TESTING_TOOLS,
+
+    // ===== PHASE 8: PERFORMANCE TOOLS =====
+    ...PERFORMANCE_TOOLS,
+
+    // ===== PHASE 9: ACCESSIBILITY TOOLS =====
+    ...ACCESSIBILITY_TOOLS,
+
+    // ===== PHASE 10: API TOOLS =====
+    ...API_TOOLS,
+
+    // ===== PHASE 11: DESIGN TOOLS =====
+    ...DESIGN_TOOLS,
+
+    // ===== PHASE 12: ANALYSIS TOOLS =====
+    ...ANALYSIS_TOOLS,
   ];
 }
 
@@ -743,6 +779,232 @@ export async function handleToolCall(
       };
 
       return handleBuildTool(name, args, buildCtx);
+    }
+
+    // ===== PHASE 7: TESTING TOOLS =====
+    case "testing_generate_unit":
+    case "testing_generate_widget":
+    case "testing_generate_integration":
+    case "testing_generate_mocks":
+    case "testing_configure_coverage":
+    case "testing_run_with_coverage": {
+      // Create testing tool context
+      const testingCtx: TestingToolContext = {
+        getProject: (id: string) => context.projectEngine.get(id),
+        updateProject: async (id: string, updates) => context.projectEngine.update(id, updates),
+        getTestingConfig: (projectId: string) => {
+          const project = context.projectEngine.get(projectId);
+          if (!project) return undefined;
+          const moduleConfig = project.modules.find((m) => m.id === "testing");
+          return moduleConfig?.config as TestingModuleConfig | undefined;
+        },
+        updateTestingConfig: (projectId: string, config: Partial<TestingModuleConfig>) => {
+          const project = context.projectEngine.get(projectId);
+          if (!project) return;
+          const moduleIndex = project.modules.findIndex((m) => m.id === "testing");
+          if (moduleIndex >= 0) {
+            project.modules[moduleIndex].config = {
+              ...project.modules[moduleIndex].config,
+              ...config,
+            };
+          } else {
+            // Create testing module if not exists
+            project.modules.push({
+              id: "testing",
+              enabled: true,
+              config: config as unknown as Record<string, unknown>,
+            });
+          }
+        },
+      };
+
+      return handleTestingTool(name, args, testingCtx);
+    }
+
+    // ===== PHASE 8: PERFORMANCE TOOLS =====
+    case "performance_analyze":
+    case "performance_check_memory_leaks":
+    case "performance_analyze_build_size":
+    case "performance_optimize_assets":
+    case "performance_generate_report":
+    case "performance_configure_thresholds": {
+      // Create performance tool context
+      const performanceCtx: PerformanceToolContext = {
+        getProject: (id: string) => context.projectEngine.get(id),
+        updateProject: async (id: string, updates) => context.projectEngine.update(id, updates),
+        getPerformanceConfig: (projectId: string) => {
+          const project = context.projectEngine.get(projectId);
+          if (!project) return undefined;
+          const moduleConfig = project.modules.find((m) => m.id === "performance");
+          return moduleConfig?.config as PerformanceModuleConfig | undefined;
+        },
+        updatePerformanceConfig: (projectId: string, config: Partial<PerformanceModuleConfig>) => {
+          const project = context.projectEngine.get(projectId);
+          if (!project) return;
+          const moduleIndex = project.modules.findIndex((m) => m.id === "performance");
+          if (moduleIndex >= 0) {
+            project.modules[moduleIndex].config = {
+              ...project.modules[moduleIndex].config,
+              ...config,
+            };
+          } else {
+            // Create performance module if not exists
+            project.modules.push({
+              id: "performance",
+              enabled: true,
+              config: config as unknown as Record<string, unknown>,
+            });
+          }
+        },
+      };
+
+      return handlePerformanceTool(name, args, performanceCtx);
+    }
+
+    // ===== PHASE 9: ACCESSIBILITY TOOLS =====
+    case "accessibility_audit_wcag":
+    case "accessibility_generate_fixes":
+    case "accessibility_setup_i18n":
+    case "accessibility_generate_translations": {
+      // Create accessibility tool context
+      const accessibilityCtx: AccessibilityToolContext = {
+        getProject: (id: string) => context.projectEngine.get(id),
+        getAccessibilityConfig: (projectId: string) => {
+          const project = context.projectEngine.get(projectId);
+          if (!project) return undefined;
+          const moduleConfig = project.modules.find((m) => m.id === "accessibility");
+          return moduleConfig?.config as AccessibilityModuleConfig | undefined;
+        },
+        updateAccessibilityConfig: (projectId: string, config: Partial<AccessibilityModuleConfig>) => {
+          const project = context.projectEngine.get(projectId);
+          if (!project) return;
+          const moduleIndex = project.modules.findIndex((m) => m.id === "accessibility");
+          if (moduleIndex >= 0) {
+            project.modules[moduleIndex].config = {
+              ...project.modules[moduleIndex].config,
+              ...config,
+            };
+          } else {
+            // Create accessibility module if not exists
+            project.modules.push({
+              id: "accessibility",
+              enabled: true,
+              config: config as unknown as Record<string, unknown>,
+            });
+          }
+        },
+      };
+
+      return handleAccessibilityTool(name, args, accessibilityCtx);
+    }
+
+    // ===== PHASE 10: API TOOLS =====
+    case "api_generate_client":
+    case "api_create_mock_server":
+    case "api_generate_json_model": {
+      // Create API tool context
+      const apiCtx: ApiToolContext = {
+        getProject: (id: string) => context.projectEngine.get(id),
+        getApiConfig: (projectId: string) => {
+          const project = context.projectEngine.get(projectId);
+          if (!project) return undefined;
+          const moduleConfig = project.modules.find((m) => m.id === "api");
+          return moduleConfig?.config as ApiModuleConfig | undefined;
+        },
+        updateApiConfig: (projectId: string, config: Partial<ApiModuleConfig>) => {
+          const project = context.projectEngine.get(projectId);
+          if (!project) return;
+          const moduleIndex = project.modules.findIndex((m) => m.id === "api");
+          if (moduleIndex >= 0) {
+            project.modules[moduleIndex].config = {
+              ...project.modules[moduleIndex].config,
+              ...config,
+            };
+          } else {
+            // Create API module if not exists
+            project.modules.push({
+              id: "api",
+              enabled: true,
+              config: config as unknown as Record<string, unknown>,
+            });
+          }
+        },
+      };
+
+      return handleApiTool(name, args, apiCtx);
+    }
+
+    // ===== PHASE 11: DESIGN TOOLS =====
+    case "design_generate_theme":
+    case "design_create_animation":
+    case "design_generate_tokens": {
+      // Create Design tool context
+      const designCtx: DesignToolContext = {
+        getProject: (id: string) => context.projectEngine.get(id),
+        getDesignConfig: (projectId: string) => {
+          const project = context.projectEngine.get(projectId);
+          if (!project) return undefined;
+          const moduleConfig = project.modules.find((m) => m.id === "design");
+          return moduleConfig?.config as DesignModuleConfig | undefined;
+        },
+        updateDesignConfig: (projectId: string, config: Partial<DesignModuleConfig>) => {
+          const project = context.projectEngine.get(projectId);
+          if (!project) return;
+          const moduleIndex = project.modules.findIndex((m) => m.id === "design");
+          if (moduleIndex >= 0) {
+            project.modules[moduleIndex].config = {
+              ...project.modules[moduleIndex].config,
+              ...config,
+            };
+          } else {
+            // Create Design module if not exists
+            project.modules.push({
+              id: "design",
+              enabled: true,
+              config: config as unknown as Record<string, unknown>,
+            });
+          }
+        },
+      };
+
+      return handleDesignTool(name, args, designCtx);
+    }
+
+    // ===== PHASE 12: ANALYSIS TOOLS =====
+    case "analysis_analyze_project":
+    case "analysis_audit_dependencies":
+    case "analysis_detect_architecture":
+    case "analysis_generate_report": {
+      // Create Analysis tool context
+      const analysisCtx: AnalysisToolContext = {
+        getProject: (id: string) => context.projectEngine.get(id),
+        getAnalysisConfig: (projectId: string) => {
+          const project = context.projectEngine.get(projectId);
+          if (!project) return undefined;
+          const moduleConfig = project.modules.find((m) => m.id === "analysis");
+          return moduleConfig?.config as AnalysisModuleConfig | undefined;
+        },
+        updateAnalysisConfig: (projectId: string, config: Partial<AnalysisModuleConfig>) => {
+          const project = context.projectEngine.get(projectId);
+          if (!project) return;
+          const moduleIndex = project.modules.findIndex((m) => m.id === "analysis");
+          if (moduleIndex >= 0) {
+            project.modules[moduleIndex].config = {
+              ...project.modules[moduleIndex].config,
+              ...config,
+            };
+          } else {
+            // Create Analysis module if not exists
+            project.modules.push({
+              id: "analysis",
+              enabled: true,
+              config: config as unknown as Record<string, unknown>,
+            });
+          }
+        },
+      };
+
+      return handleAnalysisTool(name, args, analysisCtx);
     }
 
     default:
