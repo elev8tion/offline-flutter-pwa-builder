@@ -940,7 +940,10 @@ export async function handleToolCall(
     case "design_generate_tokens":
     case "design_generate_edc_tokens":
     case "design_generate_gradients":
-    case "design_generate_wcag": {
+    case "design_generate_wcag":
+    case "design_generate_glass_card":
+    case "design_generate_glass_button":
+    case "design_generate_glass_bottomsheet": {
       // Create Design tool context
       const designCtx: DesignToolContext = {
         getProject: (id: string) => context.projectEngine.get(id),

@@ -840,3 +840,258 @@ export function getWcagContrastReport(foreground: string, background: string): s
 
   return `${ratio.toFixed(2)}:1 ${aaStatus} ${aaaStatus}`;
 }
+
+// ============================================================================
+// GLASS COMPONENT INTERFACES
+// ============================================================================
+
+/**
+ * Glass Card configuration
+ */
+export interface GlassCardConfig {
+  defaultPadding: number;
+  defaultBorderRadius: number;
+  defaultBlurStrength: number;
+  defaultBorderWidth: number;
+  darkModeAlpha: number;
+  lightModeAlpha: number;
+}
+
+/**
+ * Glass Container configuration
+ */
+export interface GlassContainerConfig {
+  projectName?: string;
+  includeNoiseOverlay: boolean;
+  defaultPadding: number;
+  defaultBorderRadius: number;
+  defaultBlurStrength: number;
+  defaultBorderWidth: number;
+  enableNoiseByDefault: boolean;
+  enableLightSimulationByDefault: boolean;
+  gradientStartAlpha: number;
+  gradientEndAlpha: number;
+  borderAlpha: number;
+  ambientShadowAlpha: number;
+  ambientShadowOffsetX: number;
+  ambientShadowOffsetY: number;
+  ambientShadowBlur: number;
+  ambientShadowSpread: number;
+  definitionShadowAlpha: number;
+  definitionShadowOffsetX: number;
+  definitionShadowOffsetY: number;
+  definitionShadowBlur: number;
+  definitionShadowSpread: number;
+  lightSimulationAlpha: number;
+  noiseOpacity: number;
+  noiseDensity: number;
+}
+
+/**
+ * Glass Button configuration
+ */
+export interface GlassButtonConfig {
+  projectName?: string;
+  includeAutoSize: boolean;
+  includeNoiseOverlay: boolean;
+  defaultHeight: number;
+  enablePressAnimationByDefault: boolean;
+  pressScale: number;
+  enableHapticsByDefault: boolean;
+  defaultHapticType: "light" | "medium" | "heavy";
+  defaultBlurStrength: number;
+  enableNoiseByDefault: boolean;
+  enableLightSimulationByDefault: boolean;
+  animationDuration: number;
+  defaultBorderRadius: number;
+  fontSize: number;
+  backgroundAlpha: number;
+  borderColor: string;
+  borderWidth: number;
+  noiseOpacity: number;
+  noiseDensity: number;
+  ambientShadowAlpha: number;
+  ambientShadowOffsetX: number;
+  ambientShadowOffsetY: number;
+  ambientShadowBlur: number;
+  ambientShadowSpread: number;
+  definitionShadowAlpha: number;
+  definitionShadowOffsetX: number;
+  definitionShadowOffsetY: number;
+  definitionShadowBlur: number;
+  definitionShadowSpread: number;
+  lightSimulationAlpha: number;
+}
+
+/**
+ * Glass Bottom Sheet configuration
+ */
+export interface GlassBottomSheetConfig {
+  defaultBorderRadius: number;
+  defaultBlurStrength: number;
+  defaultBorderWidth: number;
+  darkModeAlpha: number;
+  lightModeAlpha: number;
+}
+
+// ============================================================================
+// GLASS COMPONENT ZOD SCHEMAS
+// ============================================================================
+
+export const GlassCardConfigSchema = z.object({
+  defaultPadding: z.number(),
+  defaultBorderRadius: z.number(),
+  defaultBlurStrength: z.number(),
+  defaultBorderWidth: z.number(),
+  darkModeAlpha: z.number(),
+  lightModeAlpha: z.number(),
+});
+
+export const GlassContainerConfigSchema = z.object({
+  projectName: z.string().optional(),
+  includeNoiseOverlay: z.boolean(),
+  defaultPadding: z.number(),
+  defaultBorderRadius: z.number(),
+  defaultBlurStrength: z.number(),
+  defaultBorderWidth: z.number(),
+  enableNoiseByDefault: z.boolean(),
+  enableLightSimulationByDefault: z.boolean(),
+  gradientStartAlpha: z.number(),
+  gradientEndAlpha: z.number(),
+  borderAlpha: z.number(),
+  ambientShadowAlpha: z.number(),
+  ambientShadowOffsetX: z.number(),
+  ambientShadowOffsetY: z.number(),
+  ambientShadowBlur: z.number(),
+  ambientShadowSpread: z.number(),
+  definitionShadowAlpha: z.number(),
+  definitionShadowOffsetX: z.number(),
+  definitionShadowOffsetY: z.number(),
+  definitionShadowBlur: z.number(),
+  definitionShadowSpread: z.number(),
+  lightSimulationAlpha: z.number(),
+  noiseOpacity: z.number(),
+  noiseDensity: z.number(),
+});
+
+export const GlassButtonConfigSchema = z.object({
+  projectName: z.string().optional(),
+  includeAutoSize: z.boolean(),
+  includeNoiseOverlay: z.boolean(),
+  defaultHeight: z.number(),
+  enablePressAnimationByDefault: z.boolean(),
+  pressScale: z.number(),
+  enableHapticsByDefault: z.boolean(),
+  defaultHapticType: z.enum(["light", "medium", "heavy"]),
+  defaultBlurStrength: z.number(),
+  enableNoiseByDefault: z.boolean(),
+  enableLightSimulationByDefault: z.boolean(),
+  animationDuration: z.number(),
+  defaultBorderRadius: z.number(),
+  fontSize: z.number(),
+  backgroundAlpha: z.number(),
+  borderColor: z.string(),
+  borderWidth: z.number(),
+  noiseOpacity: z.number(),
+  noiseDensity: z.number(),
+  ambientShadowAlpha: z.number(),
+  ambientShadowOffsetX: z.number(),
+  ambientShadowOffsetY: z.number(),
+  ambientShadowBlur: z.number(),
+  ambientShadowSpread: z.number(),
+  definitionShadowAlpha: z.number(),
+  definitionShadowOffsetX: z.number(),
+  definitionShadowOffsetY: z.number(),
+  definitionShadowBlur: z.number(),
+  definitionShadowSpread: z.number(),
+  lightSimulationAlpha: z.number(),
+});
+
+export const GlassBottomSheetConfigSchema = z.object({
+  defaultBorderRadius: z.number(),
+  defaultBlurStrength: z.number(),
+  defaultBorderWidth: z.number(),
+  darkModeAlpha: z.number(),
+  lightModeAlpha: z.number(),
+});
+
+// ============================================================================
+// GLASS COMPONENT DEFAULT CONFIGURATIONS
+// ============================================================================
+
+export const DEFAULT_GLASS_CARD_CONFIG: GlassCardConfig = {
+  defaultPadding: 16.0,
+  defaultBorderRadius: 24.0,
+  defaultBlurStrength: 40.0,
+  defaultBorderWidth: 1.5,
+  darkModeAlpha: 0.15,
+  lightModeAlpha: 0.25,
+};
+
+export const DEFAULT_GLASS_CONTAINER_CONFIG: GlassContainerConfig = {
+  projectName: "myapp",
+  includeNoiseOverlay: false,
+  defaultPadding: 16.0,
+  defaultBorderRadius: 24.0,
+  defaultBlurStrength: 40.0,
+  defaultBorderWidth: 1.5,
+  enableNoiseByDefault: false,
+  enableLightSimulationByDefault: true,
+  gradientStartAlpha: 0.15,
+  gradientEndAlpha: 0.08,
+  borderAlpha: 0.2,
+  ambientShadowAlpha: 0.1,
+  ambientShadowOffsetX: 0,
+  ambientShadowOffsetY: 8,
+  ambientShadowBlur: 24,
+  ambientShadowSpread: 0,
+  definitionShadowAlpha: 0.15,
+  definitionShadowOffsetX: 0,
+  definitionShadowOffsetY: 2,
+  definitionShadowBlur: 4,
+  definitionShadowSpread: 0,
+  lightSimulationAlpha: 0.1,
+  noiseOpacity: 0.15,
+  noiseDensity: 0.5,
+};
+
+export const DEFAULT_GLASS_BUTTON_CONFIG: GlassButtonConfig = {
+  projectName: "myapp",
+  includeAutoSize: false,
+  includeNoiseOverlay: false,
+  defaultHeight: 56.0,
+  enablePressAnimationByDefault: true,
+  pressScale: 0.95,
+  enableHapticsByDefault: true,
+  defaultHapticType: "medium",
+  defaultBlurStrength: 40.0,
+  enableNoiseByDefault: false,
+  enableLightSimulationByDefault: true,
+  animationDuration: 80,
+  defaultBorderRadius: 28,
+  fontSize: 16.0,
+  backgroundAlpha: 0.2,
+  borderColor: "0xFFD4AF37",
+  borderWidth: 1.5,
+  noiseOpacity: 0.15,
+  noiseDensity: 0.5,
+  ambientShadowAlpha: 0.1,
+  ambientShadowOffsetX: 0,
+  ambientShadowOffsetY: 8,
+  ambientShadowBlur: 24,
+  ambientShadowSpread: 0,
+  definitionShadowAlpha: 0.15,
+  definitionShadowOffsetX: 0,
+  definitionShadowOffsetY: 2,
+  definitionShadowBlur: 4,
+  definitionShadowSpread: 0,
+  lightSimulationAlpha: 0.1,
+};
+
+export const DEFAULT_GLASS_BOTTOMSHEET_CONFIG: GlassBottomSheetConfig = {
+  defaultBorderRadius: 24.0,
+  defaultBlurStrength: 40.0,
+  defaultBorderWidth: 1.5,
+  darkModeAlpha: 0.85,
+  lightModeAlpha: 0.95,
+};

@@ -28,7 +28,22 @@ import {
   meetsWcagAA,
   meetsWcagAAA,
   getWcagContrastReport,
+  DEFAULT_GLASS_CARD_CONFIG,
+  DEFAULT_GLASS_CONTAINER_CONFIG,
+  DEFAULT_GLASS_BUTTON_CONFIG,
+  DEFAULT_GLASS_BOTTOMSHEET_CONFIG,
+  GlassCardConfigSchema,
+  GlassContainerConfigSchema,
+  GlassButtonConfigSchema,
+  GlassBottomSheetConfigSchema,
 } from "./config.js";
+import {
+  GLASS_CARD_SOURCE,
+  GLASS_CONTAINER_SOURCE,
+} from "./templates/glass_card_template.js";
+import { GLASS_BUTTON_SOURCE } from "./templates/glass_button_template.js";
+import { GLASS_BOTTOMSHEET_SOURCE } from "./templates/glass_bottomsheet_template.js";
+import Handlebars from "handlebars";
 
 // ============================================================================
 // ZOD SCHEMAS FOR TOOL INPUTS
@@ -76,6 +91,26 @@ export const GenerateWcagContrastInputSchema = z.object({
   config: EdcWcagContrastConfigSchema.optional().describe("Custom WCAG contrast configuration"),
   foreground: z.string().optional().describe("Foreground color (hex) to check contrast"),
   background: z.string().optional().describe("Background color (hex) to check contrast"),
+});
+
+// ============================================================================
+// GLASS COMPONENT TOOL INPUT SCHEMAS
+// ============================================================================
+
+export const GenerateGlassCardInputSchema = z.object({
+  projectId: z.string().describe("Project ID"),
+  variant: z.enum(["card", "container"]).optional().describe("Component variant"),
+  config: z.union([GlassCardConfigSchema, GlassContainerConfigSchema]).optional().describe("Custom configuration"),
+});
+
+export const GenerateGlassButtonInputSchema = z.object({
+  projectId: z.string().describe("Project ID"),
+  config: GlassButtonConfigSchema.optional().describe("Custom glass button configuration"),
+});
+
+export const GenerateGlassBottomSheetInputSchema = z.object({
+  projectId: z.string().describe("Project ID"),
+  config: GlassBottomSheetConfigSchema.optional().describe("Custom glass bottom sheet configuration"),
 });
 
 // ============================================================================
@@ -225,6 +260,86 @@ export const DESIGN_TOOLS: Tool[] = [
         },
         foreground: { type: "string", description: "Foreground color (hex) to check contrast" },
         background: { type: "string", description: "Background color (hex) to check contrast" },
+      },
+      required: ["projectId"],
+    },
+  },
+  // ============================================================================
+  // GLASS COMPONENT TOOLS
+  // ============================================================================
+  {
+    name: "design_generate_glass_card",
+    description: "Generate glass card component with BackdropFilter blur and customizable styling. Includes both GlassCard (simple) and GlassContainer (advanced with shadows).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", description: "Project ID" },
+        variant: {
+          type: "string",
+          enum: ["card", "container"],
+          description: "Component variant: card (simple) or container (with shadows/noise)"
+        },
+        config: {
+          type: "object",
+          description: "Custom glass card/container configuration",
+          properties: {
+            defaultPadding: { type: "number", description: "Default padding" },
+            defaultBorderRadius: { type: "number", description: "Border radius" },
+            defaultBlurStrength: { type: "number", description: "Blur strength (sigma)" },
+            includeNoiseOverlay: { type: "boolean", description: "Include noise overlay (container only)" },
+            enableLightSimulation: { type: "boolean", description: "Enable light simulation (container only)" },
+          },
+        },
+      },
+      required: ["projectId"],
+    },
+  },
+  {
+    name: "design_generate_glass_button",
+    description: "Generate interactive glass button with press animations, haptic feedback, and visual enhancements (blur, shadows, noise, light simulation).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", description: "Project ID" },
+        config: {
+          type: "object",
+          description: "Custom glass button configuration",
+          properties: {
+            defaultHeight: { type: "number", description: "Button height" },
+            enablePressAnimation: { type: "boolean", description: "Enable press animation" },
+            pressScale: { type: "number", description: "Press scale factor (0.95 default)" },
+            enableHaptics: { type: "boolean", description: "Enable haptic feedback" },
+            hapticType: {
+              type: "string",
+              enum: ["light", "medium", "heavy"],
+              description: "Haptic feedback intensity"
+            },
+            defaultBlurStrength: { type: "number", description: "Blur strength" },
+            enableNoise: { type: "boolean", description: "Enable noise overlay" },
+            enableLightSimulation: { type: "boolean", description: "Enable light simulation" },
+          },
+        },
+      },
+      required: ["projectId"],
+    },
+  },
+  {
+    name: "design_generate_glass_bottomsheet",
+    description: "Generate glass bottom sheet component with BackdropFilter blur and helper function for easy usage.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", description: "Project ID" },
+        config: {
+          type: "object",
+          description: "Custom glass bottom sheet configuration",
+          properties: {
+            defaultBorderRadius: { type: "number", description: "Border radius" },
+            defaultBlurStrength: { type: "number", description: "Blur strength (sigma)" },
+            darkModeAlpha: { type: "number", description: "Dark mode background alpha" },
+            lightModeAlpha: { type: "number", description: "Light mode background alpha" },
+          },
+        },
       },
       required: ["projectId"],
     },
@@ -626,6 +741,198 @@ ${wcagCode}
 }
 
 // ============================================================================
+// GLASS COMPONENT HANDLERS
+// ============================================================================
+
+async function handleGenerateGlassCard(
+  args: unknown,
+  ctx: DesignToolContext
+): Promise<{ content: Array<{ type: "text"; text: string }> }> {
+  const input = GenerateGlassCardInputSchema.parse(args);
+
+  const project = ctx.getProject(input.projectId);
+  if (!project) {
+    throw new Error(`Project not found: ${input.projectId}`);
+  }
+
+  const variant = input.variant || "card";
+  const isContainer = variant === "container";
+
+  const defaultConfig = isContainer ? DEFAULT_GLASS_CONTAINER_CONFIG : DEFAULT_GLASS_CARD_CONFIG;
+  const config = { ...defaultConfig, ...input.config, projectName: project.name };
+
+  // Compile template
+  const template = Handlebars.compile(isContainer ? GLASS_CONTAINER_SOURCE : GLASS_CARD_SOURCE);
+  const code = template(config);
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: `Generated Glass ${isContainer ? "Container" : "Card"} Component for ${project.name}
+
+Files generated:
+- lib/widgets/glass_${isContainer ? "container" : "card"}.dart
+
+Component: ${isContainer ? "GlassContainer" : "GlassCard"}
+
+Features:
+- BackdropFilter blur effect (${config.defaultBlurStrength}px)
+- Adaptive theming (light/dark mode)
+- Customizable border radius (${config.defaultBorderRadius}px)
+- Default padding: ${config.defaultPadding}px
+${isContainer ? `- Dual shadow technique (ambient + definition)
+- Light simulation gradient
+- Optional noise overlay
+- Cached static values for performance` : ""}
+
+Usage:
+\`\`\`dart
+${isContainer ? "GlassContainer" : "GlassCard"}(
+  child: Text('Hello World'),
+  borderRadius: ${config.defaultBorderRadius},
+  ${isContainer ? "blurStrength" : "blurSigma"}: ${config.defaultBlurStrength},
+)
+\`\`\`
+
+lib/widgets/glass_${isContainer ? "container" : "card"}.dart:
+\`\`\`dart
+${code}
+\`\`\``,
+      },
+    ],
+  };
+}
+
+async function handleGenerateGlassButton(
+  args: unknown,
+  ctx: DesignToolContext
+): Promise<{ content: Array<{ type: "text"; text: string }> }> {
+  const input = GenerateGlassButtonInputSchema.parse(args);
+
+  const project = ctx.getProject(input.projectId);
+  if (!project) {
+    throw new Error(`Project not found: ${input.projectId}`);
+  }
+
+  const config = { ...DEFAULT_GLASS_BUTTON_CONFIG, ...input.config, projectName: project.name };
+
+  // Compile template
+  const template = Handlebars.compile(GLASS_BUTTON_SOURCE);
+  const code = template(config);
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: `Generated Glass Button Component for ${project.name}
+
+Files generated:
+- lib/widgets/glass_button.dart
+
+Component: GlassButton
+
+Features:
+- Press animation (${config.animationDuration}ms, scale ${config.pressScale})
+- Haptic feedback (${config.defaultHapticType} impact)
+- BackdropFilter blur (${config.defaultBlurStrength}px)
+- Dual shadow technique
+- Light simulation gradient
+- Loading state support
+- Optional noise overlay
+
+Visual Enhancement:
+- Background alpha: ${config.backgroundAlpha}
+- Border color: ${config.borderColor}
+- Light simulation: ${config.enableLightSimulationByDefault ? "enabled" : "disabled"}
+
+Usage:
+\`\`\`dart
+GlassButton(
+  text: 'Click Me',
+  onPressed: () => print('Pressed!'),
+  enablePressAnimation: true,
+  enableHaptics: true,
+)
+\`\`\`
+
+lib/widgets/glass_button.dart:
+\`\`\`dart
+${code}
+\`\`\``,
+      },
+    ],
+  };
+}
+
+async function handleGenerateGlassBottomSheet(
+  args: unknown,
+  ctx: DesignToolContext
+): Promise<{ content: Array<{ type: "text"; text: string }> }> {
+  const input = GenerateGlassBottomSheetInputSchema.parse(args);
+
+  const project = ctx.getProject(input.projectId);
+  if (!project) {
+    throw new Error(`Project not found: ${input.projectId}`);
+  }
+
+  const config = { ...DEFAULT_GLASS_BOTTOMSHEET_CONFIG, ...input.config };
+
+  // Compile template
+  const template = Handlebars.compile(GLASS_BOTTOMSHEET_SOURCE);
+  const code = template(config);
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: `Generated Glass Bottom Sheet Component for ${project.name}
+
+Files generated:
+- lib/widgets/glass_bottomsheet.dart
+
+Components:
+- GlassBottomSheet: Widget component
+- showGlassBottomSheet(): Helper function
+
+Features:
+- BackdropFilter blur effect (${config.defaultBlurStrength}px)
+- Adaptive theming (light/dark mode)
+- Rounded top corners (${config.defaultBorderRadius}px)
+- Drag-to-dismiss support
+- Helper function for easy usage
+
+Dark mode alpha: ${config.darkModeAlpha}
+Light mode alpha: ${config.lightModeAlpha}
+
+Usage:
+\`\`\`dart
+showGlassBottomSheet(
+  context: context,
+  child: Padding(
+    padding: EdgeInsets.all(20),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text('Bottom Sheet Title'),
+        SizedBox(height: 16),
+        Text('Content goes here'),
+      ],
+    ),
+  ),
+);
+\`\`\`
+
+lib/widgets/glass_bottomsheet.dart:
+\`\`\`dart
+${code}
+\`\`\``,
+      },
+    ],
+  };
+}
+
+// ============================================================================
 // MAIN HANDLER
 // ============================================================================
 
@@ -648,6 +955,13 @@ export async function handleDesignTool(
       return handleGenerateGlassGradients(args, ctx);
     case "design_generate_wcag":
       return handleGenerateWcag(args, ctx);
+    // Glass Component tools
+    case "design_generate_glass_card":
+      return handleGenerateGlassCard(args, ctx);
+    case "design_generate_glass_button":
+      return handleGenerateGlassButton(args, ctx);
+    case "design_generate_glass_bottomsheet":
+      return handleGenerateGlassBottomSheet(args, ctx);
     default:
       throw new Error(`Unknown design tool: ${toolName}`);
   }
