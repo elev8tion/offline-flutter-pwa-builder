@@ -171,3 +171,56 @@ npm run test               # Run tests
 - **Secure:** Encrypted storage, input validation, security audits
 - **Modular:** Pick only the modules you need
 - **Template-Based:** Deterministic code generation via Handlebars
+
+---
+
+## CRITICAL: GitHub Project Transformation Rule
+
+**This rule is MANDATORY and must ALWAYS be followed.**
+
+### When Input is a GitHub URL
+
+If the user provides a GitHub repository URL to transform (e.g., `https://github.com/user/repo.git`):
+
+1. **ALWAYS use `github_import_and_rebuild`** as the PRIMARY tool
+2. This single tool handles the entire pipeline:
+   - Clone repository
+   - Analyze Flutter project structure
+   - Extract models and screens
+   - Create rebuild schema
+   - Generate fresh code using MCP framework patterns
+3. **NEVER** use `project_create` + manual file copying
+4. **NEVER** copy source files from the original repo to the output
+5. **NEVER** bypass the extraction/rebuild pipeline
+
+### When Starting Fresh (No GitHub URL)
+
+Use the individual tools for creating new projects:
+- `project_create` - Initialize new project
+- `drift_add_table` - Define database tables
+- `pwa_configure_*` - Configure PWA settings
+- `state_create_*` - Setup state management
+- `security_*` - Configure security features
+- `project_build` - Build and export
+
+### Why This Matters
+
+The GitHub pipeline tools (`github_import_and_rebuild`) perform **actual code transformation**:
+- Parses existing Dart code
+- Extracts data models with fields and relationships
+- Extracts screen structures
+- **Regenerates** everything using MCP framework patterns
+
+Without this pipeline, you end up with:
+- Original code copied as-is (not transformed)
+- New scaffolding files that aren't connected to anything
+- Two parallel systems that conflict
+- A broken hybrid instead of a clean rebuild
+
+### Quick Reference
+
+| Input Type | Tool to Use |
+|------------|-------------|
+| GitHub URL | `github_import_and_rebuild` (mandatory) |
+| New project from scratch | `project_create` + individual tools |
+| Enhance existing MCP project | Individual tools as needed |
