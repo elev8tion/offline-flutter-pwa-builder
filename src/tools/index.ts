@@ -7,7 +7,7 @@
 
 import { z } from "zod";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
-import type { ToolContext } from "../core/types.js";
+import type { ToolContext, ProjectDefinition } from "../core/types.js";
 import { formatValidationResult } from "../core/validation-framework/index.js";
 
 // Phase 2: Drift Module
@@ -183,6 +183,68 @@ export function getTools(): Tool[] {
       },
     },
     {
+      name: "project_update",
+      description: "Update project configuration",
+      inputSchema: {
+        type: "object",
+        properties: {
+          projectId: {
+            type: "string",
+            description: "Project ID",
+          },
+          displayName: {
+            type: "string",
+            description: "Display name for the app",
+          },
+          description: {
+            type: "string",
+            description: "App description",
+          },
+          architecture: {
+            type: "string",
+            enum: ["clean", "feature-first", "layer-first"],
+            description: "Project architecture pattern",
+          },
+          stateManagement: {
+            type: "string",
+            enum: ["riverpod", "bloc", "provider"],
+            description: "State management solution",
+          },
+          targets: {
+            type: "array",
+            items: {
+              type: "string",
+              enum: ["web", "android", "ios", "windows", "macos", "linux"],
+            },
+            description: "Target platforms",
+          },
+          themeColor: {
+            type: "string",
+            description: "Theme color (hex)",
+          },
+          backgroundColor: {
+            type: "string",
+            description: "Background color (hex)",
+          },
+        },
+        required: ["projectId"],
+      },
+    },
+    {
+      name: "project_delete",
+      description: "Delete a project",
+      inputSchema: {
+        type: "object",
+        properties: {
+          projectId: {
+            type: "string",
+            description: "Project ID",
+          },
+        },
+        required: ["projectId"],
+      },
+    },
+    {
       name: "project_build",
       description: "Build project and output to a directory",
       inputSchema: {
@@ -262,6 +324,29 @@ export function getTools(): Tool[] {
       },
     },
     {
+      name: "project_configure_environment",
+      description: "Configure environment variables and settings",
+      inputSchema: {
+        type: "object",
+        properties: {
+          projectId: {
+            type: "string",
+            description: "Project ID",
+          },
+          environment: {
+            type: "string",
+            enum: ["development", "staging", "production"],
+            description: "Environment name",
+          },
+          variables: {
+            type: "object",
+            description: "Environment variables as key-value pairs",
+          },
+        },
+        required: ["projectId", "environment", "variables"],
+      },
+    },
+    {
       name: "module_list",
       description: "List all available modules",
       inputSchema: {
@@ -300,6 +385,24 @@ export function getTools(): Tool[] {
           config: {
             type: "object",
             description: "Module configuration",
+          },
+        },
+        required: ["projectId", "moduleId"],
+      },
+    },
+    {
+      name: "module_uninstall",
+      description: "Remove a module from a project",
+      inputSchema: {
+        type: "object",
+        properties: {
+          projectId: {
+            type: "string",
+            description: "Project ID",
+          },
+          moduleId: {
+            type: "string",
+            description: "Module ID to uninstall",
           },
         },
         required: ["projectId", "moduleId"],
@@ -1124,6 +1227,68 @@ export async function handleToolCall(
       return project;
     }
 
+    case "project_update": {
+      const { projectId, ...updates } = args as {
+        projectId: string;
+        displayName?: string;
+        description?: string;
+        architecture?: "clean" | "feature-first" | "layer-first";
+        stateManagement?: "riverpod" | "bloc" | "provider";
+        targets?: Array<"web" | "android" | "ios" | "windows" | "macos" | "linux">;
+        themeColor?: string;
+        backgroundColor?: string;
+      };
+
+      const project = context.projectEngine.get(projectId);
+      if (!project) {
+        throw new Error(`Project not found: ${projectId}`);
+      }
+
+      // Update project with provided fields
+      const updatedFields: Partial<ProjectDefinition> = {};
+      if (updates.displayName) updatedFields.displayName = updates.displayName;
+      if (updates.architecture) updatedFields.architecture = updates.architecture;
+      if (updates.stateManagement) updatedFields.stateManagement = updates.stateManagement;
+      if (updates.targets) updatedFields.targets = updates.targets;
+
+      // Update PWA config if theme/background colors provided
+      if (updates.themeColor || updates.backgroundColor) {
+        updatedFields.pwa = {
+          ...project.pwa,
+          ...(updates.themeColor && { themeColor: updates.themeColor }),
+          ...(updates.backgroundColor && { backgroundColor: updates.backgroundColor }),
+        };
+      }
+
+      updatedFields.updatedAt = new Date().toISOString();
+
+      context.projectEngine.update(projectId, updatedFields);
+
+      return {
+        success: true,
+        projectId,
+        message: `Project '${project.name}' updated successfully`,
+        updated: Object.keys(updates),
+      };
+    }
+
+    case "project_delete": {
+      const { projectId } = args as { projectId: string };
+
+      const project = context.projectEngine.get(projectId);
+      if (!project) {
+        throw new Error(`Project not found: ${projectId}`);
+      }
+
+      context.projectEngine.delete(projectId);
+
+      return {
+        success: true,
+        projectId,
+        message: `Project '${project.name}' deleted successfully`,
+      };
+    }
+
     case "project_build": {
       const parsed = ProjectBuildSchema.parse(args);
       await context.projectEngine.build(parsed.projectId, parsed.outputPath);
@@ -1279,6 +1444,62 @@ export async function handleToolCall(
       };
     }
 
+    case "project_configure_environment": {
+      const { projectId, environment, variables } = args as {
+        projectId: string;
+        environment: "development" | "staging" | "production";
+        variables: Record<string, string>;
+      };
+
+      const project = context.projectEngine.get(projectId);
+      if (!project) {
+        throw new Error(`Project not found: ${projectId}`);
+      }
+
+      // Generate .env file content
+      const envContent = Object.entries(variables)
+        .map(([key, value]) => `${key}=${value}`)
+        .join("\n");
+
+      // Generate Dart environment configuration file
+      const dartEnvClass = `// Generated environment configuration
+// Environment: ${environment}
+
+class Environment {
+  static const String name = '${environment}';
+
+${Object.entries(variables)
+  .map(([key, value]) => `  static const String ${key} = '${value}';`)
+  .join("\n")}
+
+  // Check if running in development
+  static bool get isDevelopment => name == 'development';
+
+  // Check if running in staging
+  static bool get isStaging => name == 'staging';
+
+  // Check if running in production
+  static bool get isProduction => name == 'production';
+}`;
+
+      return {
+        success: true,
+        environment,
+        variableCount: Object.keys(variables).length,
+        files: {
+          ".env": envContent,
+          "lib/config/environment.dart": dartEnvClass,
+        },
+        message: `Environment '${environment}' configured with ${Object.keys(variables).length} variables`,
+        instructions: [
+          "Add .env to your .gitignore file",
+          "Use flutter_dotenv package to load .env variables",
+          "Import lib/config/environment.dart to access environment constants",
+          `Run with: flutter run --dart-define=ENVIRONMENT=${environment}`,
+        ],
+      };
+    }
+
     // ===== MODULE TOOLS =====
     case "module_list": {
       const modules = context.moduleSystem.list();
@@ -1356,6 +1577,39 @@ export async function handleToolCall(
       return {
         success: true,
         message: `Module '${parsed.moduleId}' installed successfully`,
+      };
+    }
+
+    case "module_uninstall": {
+      const { projectId, moduleId } = args as {
+        projectId: string;
+        moduleId: string;
+      };
+
+      // Get the project
+      const project = context.projectEngine.get(projectId);
+      if (!project) {
+        throw new Error(`Project not found: ${projectId}`);
+      }
+
+      // Check if module is installed
+      const moduleIndex = project.modules.findIndex((m) => m.id === moduleId);
+      if (moduleIndex < 0) {
+        throw new Error(`Module '${moduleId}' is not installed in project '${project.name}'`);
+      }
+
+      // Remove module from project
+      project.modules.splice(moduleIndex, 1);
+
+      // Uninstall from module system
+      await context.moduleSystem.uninstall(projectId, moduleId);
+
+      // Update the project
+      context.projectEngine.update(projectId, { modules: project.modules });
+
+      return {
+        success: true,
+        message: `Module '${moduleId}' uninstalled successfully`,
       };
     }
 
@@ -1583,6 +1837,7 @@ export async function handleToolCall(
     // ===== PHASE 6: BUILD TOOLS =====
     case "project_create":
     case "project_build":
+    case "project_install_dependencies":
     case "project_serve":
     case "project_deploy":
     case "project_configure_deployment":
@@ -1594,6 +1849,7 @@ export async function handleToolCall(
       // Check if it's a build module tool (has platform or mode parameter)
       // Core tools use project_create/project_build differently
       const isBuildModuleTool =
+        name === "project_install_dependencies" ||
         name === "project_serve" ||
         name === "project_deploy" ||
         name === "project_configure_deployment" ||

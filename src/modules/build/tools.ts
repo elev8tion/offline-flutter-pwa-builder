@@ -125,6 +125,36 @@ export const BUILD_TOOLS = [
   },
 
   // -------------------------------------------------------------------------
+  // project_install_dependencies - Install Flutter/Dart dependencies
+  // -------------------------------------------------------------------------
+  {
+    name: "project_install_dependencies",
+    description: "Install Flutter/Dart dependencies (flutter pub get)",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        projectId: {
+          type: "string",
+          description: "Project identifier",
+        },
+        outputPath: {
+          type: "string",
+          description: "Path to Flutter project directory",
+        },
+        offline: {
+          type: "boolean",
+          description: "Use offline mode (use cached packages)",
+        },
+        upgrade: {
+          type: "boolean",
+          description: "Upgrade dependencies to latest versions (pub upgrade)",
+        },
+      },
+      required: ["outputPath"],
+    },
+  },
+
+  // -------------------------------------------------------------------------
   // project_serve - Start local development server
   // -------------------------------------------------------------------------
   {
@@ -548,6 +578,61 @@ export function handleProjectBuild(
   };
 
   return { success: true, result, command };
+}
+
+/**
+ * Handle project_install_dependencies tool
+ */
+export function handleInstallDependencies(
+  args: {
+    projectId?: string;
+    outputPath: string;
+    offline?: boolean;
+    upgrade?: boolean;
+  },
+  context: BuildToolContext
+): { success: boolean; error?: string; command?: string; output?: string[] } {
+  // Validate project if projectId provided
+  if (args.projectId) {
+    const project = context.getProject(args.projectId);
+    if (!project) {
+      return { success: false, error: `Project ${args.projectId} not found` };
+    }
+  }
+
+  // Build flutter pub command
+  let command = "flutter pub get";
+
+  if (args.upgrade) {
+    command = "flutter pub upgrade";
+  }
+
+  if (args.offline) {
+    command += " --offline";
+  }
+
+  // Add directory context
+  const fullCommand = `cd ${args.outputPath} && ${command}`;
+
+  const output: string[] = [
+    `Installing dependencies in ${args.outputPath}...`,
+    `Running: ${command}`,
+    `Note: Execute this command in your terminal at the project location`,
+  ];
+
+  if (args.offline) {
+    output.push("Using offline mode - only cached packages will be used");
+  }
+
+  if (args.upgrade) {
+    output.push("Upgrading dependencies to latest compatible versions");
+  }
+
+  return {
+    success: true,
+    command: fullCommand,
+    output,
+  };
 }
 
 /**
@@ -1052,6 +1137,9 @@ export function handleBuildTool(
 
     case "project_build":
       return handleProjectBuild(args as Parameters<typeof handleProjectBuild>[0], context);
+
+    case "project_install_dependencies":
+      return handleInstallDependencies(args as Parameters<typeof handleInstallDependencies>[0], context);
 
     case "project_serve":
       return handleProjectServe(args as Parameters<typeof handleProjectServe>[0], context);

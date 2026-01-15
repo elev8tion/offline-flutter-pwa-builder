@@ -205,8 +205,8 @@ describe("Web Config Generation", () => {
 
 describe("Drift Tools", () => {
   test("should define all tools", () => {
-    // 6 original + 5 Tier 1 + 5 Tier 2 = 16 tools
-    expect(DRIFT_TOOLS.length).toBe(16);
+    // 6 original + 5 Tier 1 + 5 Tier 2 + 1 seed data = 17 tools
+    expect(DRIFT_TOOLS.length).toBe(17);
 
     const toolNames = DRIFT_TOOLS.map(t => t.name);
     // Original tools
@@ -222,6 +222,8 @@ describe("Drift Tools", () => {
     expect(toolNames).toContain("drift_configure_offline_indicator");
     expect(toolNames).toContain("drift_configure_optimistic_updates");
     expect(toolNames).toContain("drift_configure_retry_policy");
+    // Seed data tool
+    expect(toolNames).toContain("drift_generate_seed_data");
     // Tier 2: Performance & Scalability
     expect(toolNames).toContain("drift_configure_pagination");
     expect(toolNames).toContain("drift_configure_lazy_loading");

@@ -595,6 +595,30 @@ export const DRIFT_TOOLS: Tool[] = [
       required: ["projectId"],
     },
   },
+  {
+    name: "drift_generate_seed_data",
+    description: "Generate seed data for database testing and development.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", description: "Project ID" },
+        tables: {
+          type: "array",
+          items: { type: "string" },
+          description: "Tables to generate seed data for (all if not specified)",
+        },
+        rowsPerTable: { type: "number", description: "Number of rows per table (default: 10)", default: 10 },
+        outputFormat: {
+          type: "string",
+          enum: ["dart", "sql", "json"],
+          description: "Output format for seed data",
+          default: "dart",
+        },
+        useFaker: { type: "boolean", description: "Use realistic fake data", default: true },
+      },
+      required: ["projectId"],
+    },
+  },
 ];
 
 // ============================================================================
@@ -649,6 +673,8 @@ export async function handleDriftTool(
       return handleConfigureBatchOperations(args, ctx);
     case "drift_configure_data_compression":
       return handleConfigureDataCompression(args, ctx);
+    case "drift_generate_seed_data":
+      return handleGenerateSeedData(args, ctx);
     default:
       throw new Error(`Unknown drift tool: ${name}`);
   }
@@ -1533,6 +1559,169 @@ Compression Levels:
   - low: Light compression (level 3)
   - medium: Balanced (level 6)
   - high: Maximum compression (level 9)`,
+      },
+    ],
+  };
+}
+
+async function handleGenerateSeedData(
+  args: Record<string, unknown>,
+  ctx: DriftToolContext
+): Promise<{ content: Array<{ type: "text"; text: string }> }> {
+  const { projectId, tables, rowsPerTable = 10, outputFormat = "dart", useFaker = true } = args as {
+    projectId: string;
+    tables?: string[];
+    rowsPerTable?: number;
+    outputFormat?: "dart" | "sql" | "json";
+    useFaker?: boolean;
+  };
+
+  const project = ctx.getProject(projectId);
+  if (!project) {
+    throw new Error(`Project not found: ${projectId}`);
+  }
+
+  const config = ctx.getDriftConfig(projectId);
+  if (!config) {
+    throw new Error("Drift module not installed on this project");
+  }
+
+  // Filter tables if specified
+  const tablesToSeed = tables ? config.tables.filter((t) => tables.includes(t.name)) : config.tables;
+
+  if (tablesToSeed.length === 0) {
+    throw new Error("No tables found to generate seed data");
+  }
+
+  // Helper to generate fake data based on column type
+  const generateFakeValue = (columnType: string, columnName: string): string => {
+    const lowerName = columnName.toLowerCase();
+    const lowerType = columnType.toLowerCase();
+
+    if (useFaker) {
+      // Name patterns
+      if (lowerName.includes("name") && lowerName.includes("first")) return "faker.person.firstName()";
+      if (lowerName.includes("name") && lowerName.includes("last")) return "faker.person.lastName()";
+      if (lowerName.includes("name")) return "faker.person.fullName()";
+      if (lowerName.includes("email")) return "faker.internet.email()";
+      if (lowerName.includes("phone")) return "faker.phone.number()";
+      if (lowerName.includes("address")) return "faker.location.streetAddress()";
+      if (lowerName.includes("city")) return "faker.location.city()";
+      if (lowerName.includes("country")) return "faker.location.country()";
+      if (lowerName.includes("company")) return "faker.company.name()";
+      if (lowerName.includes("title")) return "faker.person.jobTitle()";
+      if (lowerName.includes("description")) return "faker.lorem.paragraph()";
+      if (lowerName.includes("url")) return "faker.internet.url()";
+      if (lowerName.includes("avatar") || lowerName.includes("image")) return "faker.image.avatar()";
+    }
+
+    // Type-based generation
+    if (lowerType === "text") return useFaker ? "faker.lorem.sentence()" : "'Sample text'";
+    if (lowerType === "integer") return "faker.number.int({ min: 1, max: 1000 })";
+    if (lowerType === "real") return "faker.number.float({ min: 0, max: 100 })";
+    if (lowerType === "boolean") return "faker.datatype.boolean()";
+    if (lowerType === "datetime") return "DateTime.now()";
+
+    return useFaker ? "faker.lorem.word()" : "'sample'";
+  };
+
+  let seedCode = "";
+
+  if (outputFormat === "dart") {
+    seedCode = `// Generated seed data for Drift database
+import 'package:drift/drift.dart';
+${useFaker ? "import 'package:faker/faker.dart';\n" : ""}
+import 'database.dart';
+
+${useFaker ? "final faker = Faker();\n" : ""}
+Future<void> seedDatabase(AppDatabase db) async {
+  print('Seeding database...');
+
+${tablesToSeed
+  .map((table) => {
+    const className = table.name.charAt(0).toUpperCase() + table.name.slice(1).replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+    const columns = table.columns.filter((c) => !c.autoIncrement);
+
+    return `  // Seed ${table.name} table
+  final ${table.name}Items = List.generate(${rowsPerTable}, (i) {
+    return ${className}Companion(
+${columns
+  .map(
+    (col) =>
+      `      ${col.name}: Value(${generateFakeValue(col.type, col.name)}),`
+  )
+  .join("\n")}
+    );
+  });
+
+  for (final item in ${table.name}Items) {
+    await db.into(db.${table.name}).insert(item);
+  }
+  print('Seeded ${rowsPerTable} rows into ${table.name}');
+`;
+  })
+  .join("\n")}
+  print('Database seeding complete!');
+}`;
+  } else if (outputFormat === "sql") {
+    seedCode = `-- Generated seed data for Drift database\n\n`;
+    tablesToSeed.forEach((table) => {
+      seedCode += `-- Seed ${table.name} table\n`;
+      for (let i = 0; i < rowsPerTable; i++) {
+        const values = table.columns
+          .filter((c) => !c.autoIncrement)
+          .map((col) => {
+            if (col.type === "text") return `'Sample ${col.name} ${i}'`;
+            if (col.type === "integer") return `${i + 1}`;
+            if (col.type === "real") return `${(i + 1) * 1.5}`;
+            if (col.type === "boolean") return i % 2 === 0 ? "1" : "0";
+            return `'value${i}'`;
+          })
+          .join(", ");
+        seedCode += `INSERT INTO ${table.name} (${table.columns
+          .filter((c) => !c.autoIncrement)
+          .map((c) => c.name)
+          .join(", ")}) VALUES (${values});\n`;
+      }
+      seedCode += "\n";
+    });
+  } else if (outputFormat === "json") {
+    const jsonData: Record<string, unknown[]> = {};
+    tablesToSeed.forEach((table) => {
+      jsonData[table.name] = Array.from({ length: rowsPerTable }, (_, i) => {
+        const row: Record<string, unknown> = {};
+        table.columns
+          .filter((c) => !c.autoIncrement)
+          .forEach((col) => {
+            if (col.type === "text") row[col.name] = `Sample ${col.name} ${i}`;
+            else if (col.type === "integer") row[col.name] = i + 1;
+            else if (col.type === "real") row[col.name] = (i + 1) * 1.5;
+            else if (col.type === "boolean") row[col.name] = i % 2 === 0;
+            else row[col.name] = `value${i}`;
+          });
+        return row;
+      });
+    });
+    seedCode = JSON.stringify(jsonData, null, 2);
+  }
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: `# Drift Seed Data Generated
+
+Tables: ${tablesToSeed.map((t) => t.name).join(", ")}
+Rows per table: ${rowsPerTable}
+Output format: ${outputFormat}
+Using faker: ${useFaker}
+
+${outputFormat === "dart" ? "## Dart Code\n\nAdd this to your project and call \`seedDatabase(db)\` to populate test data:\n\n" : outputFormat === "sql" ? "## SQL Statements\n\nExecute these statements to populate your database:\n\n" : "## JSON Data\n\n"}
+\`\`\`${outputFormat}
+${seedCode}
+\`\`\`
+
+${outputFormat === "dart" && useFaker ? "\n**Note:** Add \`faker: ^2.1.0\` to your pubspec.yaml to use this seed data." : ""}`,
       },
     ],
   };

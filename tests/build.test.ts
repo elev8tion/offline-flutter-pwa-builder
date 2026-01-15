@@ -626,8 +626,8 @@ describe("Module Constants", () => {
 // ============================================================================
 
 describe("Build Tools Definitions", () => {
-  it("should define all 10 build tools", () => {
-    expect(BUILD_TOOLS.length).toBe(10);
+  it("should define all 11 build tools", () => {
+    expect(BUILD_TOOLS.length).toBe(11);
   });
 
   it("should define project_create tool", () => {
@@ -641,6 +641,14 @@ describe("Build Tools Definitions", () => {
     const tool = BUILD_TOOLS.find((t) => t.name === "project_build");
     expect(tool).toBeDefined();
     expect(tool?.inputSchema.required).toContain("projectId");
+  });
+
+  it("should define project_install_dependencies tool", () => {
+    const tool = BUILD_TOOLS.find((t) => t.name === "project_install_dependencies");
+    expect(tool).toBeDefined();
+    expect(tool?.inputSchema.required).toContain("outputPath");
+    expect(tool?.inputSchema.properties?.offline).toBeDefined();
+    expect(tool?.inputSchema.properties?.upgrade).toBeDefined();
   });
 
   it("should define project_serve tool", () => {
