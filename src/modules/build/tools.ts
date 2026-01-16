@@ -40,11 +40,11 @@ export interface BuildToolContext {
 
 export const BUILD_TOOLS = [
   // -------------------------------------------------------------------------
-  // project_create - Create new Flutter PWA project
+  // project_create_scaffold - Create new Flutter PWA project
   // -------------------------------------------------------------------------
   {
-    name: "project_create",
-    description: "Create a new Flutter PWA project with full scaffolding and configuration",
+    name: "project_create_scaffold",
+    description: "Create a new Flutter PWA project scaffold with full configuration",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -85,11 +85,11 @@ export const BUILD_TOOLS = [
   },
 
   // -------------------------------------------------------------------------
-  // project_build - Build project for targets
+  // project_build_advanced - Build project for targets
   // -------------------------------------------------------------------------
   {
-    name: "project_build",
-    description: "Build the Flutter project for web with optimizations",
+    name: "project_build_advanced",
+    description: "Build the Flutter project for web with advanced optimizations",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -264,11 +264,11 @@ export const BUILD_TOOLS = [
   },
 
   // -------------------------------------------------------------------------
-  // project_validate - Validate project configuration
+  // project_validate_advanced - Validate project configuration
   // -------------------------------------------------------------------------
   {
-    name: "project_validate",
-    description: "Validate project configuration and structure",
+    name: "project_validate_advanced",
+    description: "Validate project configuration and build structure",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -453,7 +453,7 @@ export const BUILD_TOOLS = [
 // ============================================================================
 
 /**
- * Handle project_create tool
+ * Handle project_create_scaffold tool (scaffold creation).
  */
 export function handleProjectCreate(
   args: {
@@ -516,7 +516,7 @@ export function handleProjectCreate(
 }
 
 /**
- * Handle project_build tool
+ * Handle project_build_advanced tool (advanced build options).
  */
 export function handleProjectBuild(
   args: {
@@ -819,7 +819,7 @@ export function handleConfigureDeployment(
 }
 
 /**
- * Handle project_validate tool
+ * Handle project_validate_advanced tool (advanced validation checks).
  */
 export function handleProjectValidate(
   args: {
@@ -1132,10 +1132,10 @@ export function handleBuildTool(
   context: BuildToolContext
 ): Record<string, unknown> {
   switch (toolName) {
-    case "project_create":
+    case "project_create_scaffold":
       return handleProjectCreate(args as Parameters<typeof handleProjectCreate>[0], context);
 
-    case "project_build":
+    case "project_build_advanced":
       return handleProjectBuild(args as Parameters<typeof handleProjectBuild>[0], context);
 
     case "project_install_dependencies":
@@ -1150,7 +1150,7 @@ export function handleBuildTool(
     case "project_configure_deployment":
       return handleConfigureDeployment(args as Parameters<typeof handleConfigureDeployment>[0], context);
 
-    case "project_validate":
+    case "project_validate_advanced":
       return handleProjectValidate(args as Parameters<typeof handleProjectValidate>[0], context);
 
     case "project_export":

@@ -630,15 +630,15 @@ describe("Build Tools Definitions", () => {
     expect(BUILD_TOOLS.length).toBe(11);
   });
 
-  it("should define project_create tool", () => {
-    const tool = BUILD_TOOLS.find((t) => t.name === "project_create");
+  it("should define project_create_scaffold tool", () => {
+    const tool = BUILD_TOOLS.find((t) => t.name === "project_create_scaffold");
     expect(tool).toBeDefined();
     expect(tool?.inputSchema.required).toContain("projectId");
     expect(tool?.inputSchema.required).toContain("name");
   });
 
-  it("should define project_build tool", () => {
-    const tool = BUILD_TOOLS.find((t) => t.name === "project_build");
+  it("should define project_build_advanced tool", () => {
+    const tool = BUILD_TOOLS.find((t) => t.name === "project_build_advanced");
     expect(tool).toBeDefined();
     expect(tool?.inputSchema.required).toContain("projectId");
   });

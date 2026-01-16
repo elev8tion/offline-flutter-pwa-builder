@@ -133,6 +133,23 @@ Development server, deployment, and CI/CD:
 - **`project_test_offline`** - Test offline functionality with network simulation
 - **`project_audit`** - Run Lighthouse PWA audit
 - **`project_configure_cicd`** - Configure CI/CD pipeline (GitHub Actions, GitLab CI, etc.)
+- **`project_create_scaffold`** - Create a full Flutter PWA scaffold (build module)
+- **`project_build_advanced`** - Advanced web build with build-module options
+- **`project_validate_advanced`** - Advanced validation with build-module checks
+
+### Tool Renames & Compatibility
+
+Build-module tools were renamed to avoid collisions with core tools:
+- `project_create` (build module) -> `project_create_scaffold`
+- `project_build` (build module) -> `project_build_advanced`
+- `project_validate` (build module) -> `project_validate_advanced`
+
+Optional alias names are available for clarity:
+- `project_create_full` -> `project_create_scaffold`
+- `project_build_full` -> `project_build_advanced`
+- `project_validate_full` -> `project_validate_advanced`
+
+Naming convention: core tools use the base name, module variants use `_scaffold`/`_advanced`, and aliases use `_full`.
 
 ### Testing Tools (6 tools)
 
