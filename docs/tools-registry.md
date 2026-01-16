@@ -1,14 +1,14 @@
 # MCP Tool Registry
 
-Generated: 2026-01-16T04:58:21.960Z
+Generated: 2026-01-16T22:42:25.226Z
 
-Total tools: 105
+Total tools: 102
 
 ## Counts By Group
 
 | Group | Count |
 | --- | ---: |
-| core | 16 |
+| core | 13 |
 | drift | 17 |
 | pwa | 6 |
 | state | 4 |
@@ -27,13 +27,10 @@ Total tools: 105
 
 | Tool | Description |
 | --- | --- |
-| `project_create` | Create a new offline-first Flutter PWA project |
 | `project_list` | List all projects |
 | `project_get` | Get project details by ID |
 | `project_update` | Update project configuration |
 | `project_delete` | Delete a project by ID |
-| `project_build` | Build project and output files |
-| `project_validate` | Validate project configuration and structure |
 | `project_export_files` | Export files without full build pipeline |
 | `project_validate_build` | Pre-flight check before build |
 | `project_configure_environment` | Configure environment variables and settings |
@@ -194,6 +191,6 @@ Total tools: 105
 
 | Tool | Description |
 | --- | --- |
-| `project_create_full` | Create a new Flutter PWA project scaffold with full configuration (alias for project_create_scaffold) |
-| `project_build_full` | Build the Flutter project for web with advanced optimizations (alias for project_build_advanced) |
-| `project_validate_full` | Validate project configuration and build structure (alias for project_validate_advanced) |
+| `project_create` | Create a new Flutter PWA project scaffold with full configuration (alias for project_create_scaffold) |
+| `project_build` | Build the Flutter project for web with advanced optimizations (alias for project_build_advanced) |
+| `project_validate` | Validate project configuration and build structure (alias for project_validate_advanced) |

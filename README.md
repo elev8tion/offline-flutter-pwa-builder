@@ -144,12 +144,12 @@ Build-module tools were renamed to avoid collisions with core tools:
 - `project_build` (build module) -> `project_build_advanced`
 - `project_validate` (build module) -> `project_validate_advanced`
 
-Optional alias names are available for clarity:
-- `project_create_full` -> `project_create_scaffold`
-- `project_build_full` -> `project_build_advanced`
-- `project_validate_full` -> `project_validate_advanced`
+Legacy aliases keep older clients working:
+- `project_create` -> `project_create_scaffold`
+- `project_build` -> `project_build_advanced`
+- `project_validate` -> `project_validate_advanced`
 
-Naming convention: core tools use the base name, module variants use `_scaffold`/`_advanced`, and aliases use `_full`.
+Naming convention: core tools use base names, module variants use `_scaffold`/`_advanced`, and aliases preserve legacy names.
 
 ### Testing Tools (6 tools)
 

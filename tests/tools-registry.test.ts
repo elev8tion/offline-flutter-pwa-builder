@@ -35,6 +35,13 @@ describe('Tool Registry', () => {
     }
 
     expect(missingHandlers).toEqual([]);
-    expect(TOOL_HANDLERS.size).toBe(tools.length);
+    const toolNames = new Set(tools.map((tool) => tool.name));
+    const extraHandlers = Array.from(TOOL_HANDLERS.keys()).filter((name) => !toolNames.has(name));
+
+    if (extraHandlers.length > 0) {
+      console.error(`Extra tool handlers: ${extraHandlers.sort().join(', ')}`);
+    }
+
+    expect(extraHandlers).toEqual([]);
   });
 });

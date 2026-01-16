@@ -93,8 +93,18 @@ function getDuplicateNames(names: string[]): string[] {
   return Array.from(duplicates).sort();
 }
 
+const TOOL_ALIAS_MAP = [
+  { alias: "project_create", target: "project_create_scaffold" },
+  { alias: "project_build", target: "project_build_advanced" },
+  { alias: "project_validate", target: "project_validate_advanced" },
+];
+
+const TOOL_ALIAS_NAMES = new Set(TOOL_ALIAS_MAP.map((entry) => entry.alias));
+
+const FILTERED_CORE_TOOLS = CORE_TOOLS.filter((tool) => !TOOL_ALIAS_NAMES.has(tool.name));
+
 const BASE_TOOL_DEFINITIONS: Tool[] = [
-  ...CORE_TOOLS,
+  ...FILTERED_CORE_TOOLS,
   ...DRIFT_TOOLS,
   ...PWA_TOOLS,
   ...STATE_TOOLS,
@@ -107,12 +117,6 @@ const BASE_TOOL_DEFINITIONS: Tool[] = [
   ...DESIGN_TOOLS,
   ...ANALYSIS_TOOLS,
   ...GITHUB_TOOLS,
-];
-
-const TOOL_ALIAS_MAP = [
-  { alias: "project_create_full", target: "project_create_scaffold" },
-  { alias: "project_build_full", target: "project_build_advanced" },
-  { alias: "project_validate_full", target: "project_validate_advanced" },
 ];
 
 function getToolByName(name: string, tools: Tool[]): Tool | undefined {
@@ -138,7 +142,7 @@ export const TOOL_DEFINITIONS: Tool[] = [
 ];
 
 export const TOOL_GROUPS = {
-  core: CORE_TOOLS,
+  core: FILTERED_CORE_TOOLS,
   drift: DRIFT_TOOLS,
   pwa: PWA_TOOLS,
   state: STATE_TOOLS,
@@ -217,7 +221,7 @@ function registerTools(
 
 export const TOOL_HANDLERS: Map<string, ToolHandler> = new Map();
 
-registerTools(TOOL_HANDLERS, CORE_TOOLS, (toolName) => (args, context) =>
+registerTools(TOOL_HANDLERS, FILTERED_CORE_TOOLS, (toolName) => (args, context) =>
   handleCoreToolCall(toolName, args, context)
 );
 
