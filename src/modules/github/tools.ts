@@ -12,7 +12,7 @@ import { parsePubspec } from './parsers/index.js';
 import { detectArchitecture, extractModels, extractScreens, extractWidgets, extractTheme } from './analyzers/index.js';
 import { createRebuildSchema, rebuildProject } from './builders/index.js';
 import * as path from 'path';
-import * as fs from 'fs-extra';
+import fs from 'fs-extra';
 import { z } from 'zod';
 
 export const GITHUB_TOOLS = [

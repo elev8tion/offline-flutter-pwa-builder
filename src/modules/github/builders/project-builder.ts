@@ -6,7 +6,7 @@
  */
 
 import { RebuildSchema } from '../config.js';
-import * as fs from 'fs-extra';
+import fs from 'fs-extra';
 import * as path from 'path';
 import { execSync } from 'child_process';
 import {
