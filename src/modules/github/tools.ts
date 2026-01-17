@@ -10,7 +10,7 @@ import {
 import { cloneRepository, formatBytes, cleanupClone } from './utils/git-utils.js';
 import { parsePubspec, parsePubspecContent } from './parsers/index.js';
 import { detectArchitecture, extractModels, extractScreens, extractWidgets, extractTheme, parseModelsFromContent, parseScreensFromContent } from './analyzers/index.js';
-import { parseRepomixFile, getModelFiles, getScreenFiles, getStateFiles, getWidgetFiles } from './parsers/repomix-parser.js';
+import { parseRepomixFile, getModelFiles, getScreenFiles, getStateFiles, getWidgetFiles, getThemeFiles, getUtilsFiles, getServiceFiles, getConfigFiles } from './parsers/repomix-parser.js';
 import { createRebuildSchema, rebuildProject } from './builders/index.js';
 import * as path from 'path';
 import fs from 'fs-extra';
@@ -159,7 +159,8 @@ export const GITHUB_TOOLS = [
 
 export async function handleGithubTool(
   name: string,
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  context?: any
 ): Promise<any> {
   switch (name) {
     case 'github_clone_repository': {
@@ -362,6 +363,12 @@ export async function handleGithubTool(
       // Step 6: Extract widget files
       const widgetFiles = getWidgetFiles(parsed);
 
+      // Step 6b: Extract theme, utils, services, config files
+      const themeFiles = getThemeFiles(parsed);
+      const utilsFiles = getUtilsFiles(parsed);
+      const serviceFiles = getServiceFiles(parsed);
+      const configFiles = getConfigFiles(parsed);
+
       // Step 7: Build analysis result (compatible with createRebuildSchema)
       // Map 'keep' to 'custom' for architecture type compatibility
       const targetArch = input.options?.targetArchitecture;
@@ -423,40 +430,42 @@ export async function handleGithubTool(
         targetStateManagement: input.options?.targetStateManagement,
       });
 
-      // Step 9: Rebuild project
+      // Step 9: Build extracted files bundle (if keepScreenCode is enabled)
+      const extractedFiles = input.options?.keepScreenCode ? {
+        models: modelFiles,
+        screens: screenFiles,
+        widgets: widgetFiles,
+        providers: stateFiles,
+        theme: themeFiles.length > 0 ? themeFiles : undefined,
+        utils: utilsFiles.length > 0 ? utilsFiles : undefined,
+        services: serviceFiles.length > 0 ? serviceFiles : undefined,
+        config: configFiles.length > 0 ? configFiles : undefined,
+      } : undefined;
+
+      // Step 10: Rebuild project with extracted files
+      // The rebuildProject() function will now handle copying extracted files
+      // and skip generating placeholders for files that already exist
+      // Pass a tool caller function so rebuildProject can call actual MCP tools
       const rebuildResult = await rebuildProject(
         schema,
         input.outputPath,
         {
           runFlutterCreate: true,
           formatCode: true,
+          extractedFiles,
+          toolCaller: context ? async (toolName: string, args: any) => {
+            // Import the tool handler registry from the parent context
+            // This allows rebuildProject to call other MCP tools like drift_add_table, design_generate_theme, etc.
+            const { TOOL_HANDLERS } = await import('../../tools/registry.js');
+            const handler = TOOL_HANDLERS.get(toolName);
+            if (!handler) {
+              console.warn(`[Tool Caller] Tool not found: ${toolName}`);
+              return { success: false, error: `Tool not found: ${toolName}` };
+            }
+            return handler(args, context);
+          } : undefined,
         }
       );
-
-      // Step 10: If keepScreenCode is enabled, copy original screen files
-      if (input.options?.keepScreenCode) {
-        const screensDir = path.join(input.outputPath, 'lib', 'screens');
-        await fs.ensureDir(screensDir);
-
-        for (const file of screenFiles) {
-          // Extract the relative path within screens/
-          const screenPath = file.path.replace(/.*\/screens\//, '');
-          const targetPath = path.join(screensDir, screenPath);
-          await fs.ensureDir(path.dirname(targetPath));
-          await fs.writeFile(targetPath, file.content, 'utf-8');
-        }
-
-        // Also copy widgets if they exist
-        const widgetsDir = path.join(input.outputPath, 'lib', 'widgets');
-        await fs.ensureDir(widgetsDir);
-
-        for (const file of widgetFiles) {
-          const widgetPath = file.path.replace(/.*\/widgets\//, '');
-          const targetPath = path.join(widgetsDir, widgetPath);
-          await fs.ensureDir(path.dirname(targetPath));
-          await fs.writeFile(targetPath, file.content, 'utf-8');
-        }
-      }
 
       return {
         success: true,
@@ -466,14 +475,24 @@ export async function handleGithubTool(
           totalFiles: parsed.files.length,
           dartFiles: parsed.dartFiles.length,
           modelsFound: models.length,
+          modelFilesFound: modelFiles.length,
           screensFound: screens.length,
+          screenFilesFound: screenFiles.length,
           stateFilesFound: stateFiles.length,
           widgetFilesFound: widgetFiles.length,
+          themeFilesFound: themeFiles.length,
+          utilsFilesFound: utilsFiles.length,
+          serviceFilesFound: serviceFiles.length,
+          configFilesFound: configFiles.length,
         },
         rebuildInfo: {
           outputPath: rebuildResult.outputPath,
           filesGenerated: rebuildResult.filesGenerated,
           modulesInstalled: rebuildResult.modulesInstalled,
+          filesCopied: input.options?.keepScreenCode ?
+            screenFiles.length + widgetFiles.length + modelFiles.length +
+            stateFiles.length + themeFiles.length + utilsFiles.length +
+            serviceFiles.length + configFiles.length : 0,
         },
         warnings: schema.warnings,
         nextSteps: rebuildResult.nextSteps,

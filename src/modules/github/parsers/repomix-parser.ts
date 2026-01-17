@@ -197,3 +197,49 @@ export function getWidgetFiles(result: RepomixParseResult): ParsedFile[] {
     f.path.endsWith('_widget.dart')
   );
 }
+
+/**
+ * Extract theme files from parsed repomix result
+ */
+export function getThemeFiles(result: RepomixParseResult): ParsedFile[] {
+  return result.dartFiles.filter(f =>
+    f.path.includes('/theme/') ||
+    f.path.includes('/themes/') ||
+    f.path.includes('/core/theme') ||
+    f.path.endsWith('_theme.dart') ||
+    f.path.endsWith('/theme.dart')
+  );
+}
+
+/**
+ * Extract utils files from parsed repomix result
+ */
+export function getUtilsFiles(result: RepomixParseResult): ParsedFile[] {
+  return result.dartFiles.filter(f =>
+    f.path.includes('/utils/') ||
+    f.path.includes('/helpers/') ||
+    f.path.includes('/core/utils')
+  );
+}
+
+/**
+ * Extract service files from parsed repomix result
+ */
+export function getServiceFiles(result: RepomixParseResult): ParsedFile[] {
+  return result.dartFiles.filter(f =>
+    f.path.includes('/services/') ||
+    f.path.includes('/api/') ||
+    f.path.includes('/repositories/')
+  );
+}
+
+/**
+ * Extract config files from parsed repomix result
+ */
+export function getConfigFiles(result: RepomixParseResult): ParsedFile[] {
+  return result.dartFiles.filter(f =>
+    f.path.includes('/config/') ||
+    f.path.includes('/constants/') ||
+    f.path.includes('/core/config')
+  );
+}

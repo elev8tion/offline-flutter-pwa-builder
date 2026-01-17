@@ -21,10 +21,23 @@ import {
 } from './main-generator.js';
 import { DriftTableSchema } from './drift-mapper.js';
 
+export interface ExtractedFiles {
+  models?: Array<{ path: string; content: string }>;
+  screens?: Array<{ path: string; content: string }>;
+  widgets?: Array<{ path: string; content: string }>;
+  providers?: Array<{ path: string; content: string }>;
+  theme?: Array<{ path: string; content: string }>;
+  utils?: Array<{ path: string; content: string }>;
+  services?: Array<{ path: string; content: string }>;
+  config?: Array<{ path: string; content: string }>;
+}
+
 export interface RebuildOptions {
   runFlutterCreate?: boolean;
   formatCode?: boolean;
   generateTests?: boolean;
+  extractedFiles?: ExtractedFiles;
+  toolCaller?: (toolName: string, args: any) => Promise<any>;
 }
 
 export interface RebuildResult {
@@ -99,6 +112,8 @@ export async function rebuildProject(
     runFlutterCreate = true,
     formatCode = true,
     generateTests = false,
+    extractedFiles,
+    toolCaller,
   } = options;
 
   try {
@@ -112,20 +127,46 @@ export async function rebuildProject(
     // 3. Generate configuration files
     await generateConfigFiles(outputPath, schema);
 
-    // 4. Copy preserved files
-    const filesCopied = await copyPreservedFiles(schema);
+    // 4. Copy extracted files from original project (if provided)
+    const filesCopied = await copyExtractedFiles(outputPath, extractedFiles || {});
 
-    // 5. Generate new code files
-    const filesGenerated = await generateCodeFiles(outputPath, schema);
+    // 5. Generate new code files (only for missing files)
+    const filesGenerated = await generateCodeFiles(outputPath, schema, extractedFiles || {}, toolCaller, projectId);
 
     // 6. Setup Drift database if schemas are provided
     if (schema.driftSchemas && schema.driftSchemas.length > 0) {
       console.log('\n[Drift Integration] Setting up offline database...');
-      await setupDriftDatabase(
-        schema.driftSchemas,
-        outputPath,
-        schema.projectDefinition.name
-      );
+
+      if (toolCaller) {
+        // Use actual MCP tools for Drift setup
+        console.log('[Drift] Using MCP tools for database setup...');
+        for (const tableSchema of schema.driftSchemas) {
+          console.log(`[Drift] Adding table: ${tableSchema.name}`);
+          await toolCaller('drift_add_table', {
+            projectId,
+            name: tableSchema.name,
+            columns: tableSchema.columns,
+            timestamps: true,
+            softDelete: false,
+          });
+        }
+
+        // Enable encryption if needed
+        if (schema.projectDefinition.pwa?.offline?.encryption) {
+          console.log('[Drift] Enabling database encryption...');
+          await toolCaller('drift_enable_encryption', {
+            projectId,
+            strategy: 'stored',
+          });
+        }
+      } else {
+        // Fallback to internal generator
+        await setupDriftDatabase(
+          schema.driftSchemas,
+          outputPath,
+          schema.projectDefinition.name
+        );
+      }
     }
 
     // 7. Run flutter create if requested
@@ -256,6 +297,9 @@ async function generateConfigFiles(
     dev_dependencies: {
       flutter_test: { sdk: 'flutter' },
       flutter_lints: '^3.0.0',
+      json_serializable: '^6.8.0',
+      build_runner: '^2.4.6',
+      drift_dev: '^2.14.0',
     },
     flutter: {
       uses_material_design: true,
@@ -339,6 +383,16 @@ ${schema.warnings.length > 0 ? schema.warnings.map((w: string) => `- ${w}`).join
 function generateDependencies(schema: RebuildSchema): Record<string, string> {
   const deps: Record<string, string> = {};
 
+  // Core Flutter packages
+  deps['provider'] = '^6.1.1';
+
+  // Navigation
+  deps['go_router'] = '^14.0.0';
+
+  // Serialization
+  deps['equatable'] = '^2.0.5';
+  deps['json_annotation'] = '^4.9.0';
+
   // Add state management dependencies
   if (schema.projectDefinition.stateManagement === 'riverpod') {
     deps['flutter_riverpod'] = '^2.4.0';
@@ -352,7 +406,7 @@ function generateDependencies(schema: RebuildSchema): Record<string, string> {
   for (const module of schema.projectDefinition.modules || []) {
     if (module.id === 'drift') {
       deps['drift'] = '^2.14.0';
-      deps['sqlite3_flutter_libs'] = '^0.5.18';
+      deps['sqlite3_flutter_libs'] = '^0.5.0';
       deps['path_provider'] = '^2.1.1';
       deps['path'] = '^1.8.3';
     }
@@ -362,22 +416,73 @@ function generateDependencies(schema: RebuildSchema): Record<string, string> {
 }
 
 /**
- * Copy preserved files from the generation plan
+ * Copy extracted files from original project to output
  */
-async function copyPreservedFiles(
-  schema: RebuildSchema
+async function copyExtractedFiles(
+  outputPath: string,
+  extractedFiles: ExtractedFiles
 ): Promise<number> {
-  // Note: In a real implementation, we would copy files from the analyzed project
-  // For now, we just count the preserved files
-  return schema.preservedFiles.length;
+  let count = 0;
+
+  const copyFilesToDir = async (files: Array<{ path: string; content: string }>, dirName: string) => {
+    const targetDir = path.join(outputPath, 'lib', dirName);
+    await fs.ensureDir(targetDir);
+
+    for (const file of files) {
+      const regex = new RegExp(`.*\\/${dirName}\\/`);
+      const relativePath = file.path.replace(regex, '');
+      const targetPath = path.join(targetDir, relativePath);
+      await fs.ensureDir(path.dirname(targetPath));
+      await fs.writeFile(targetPath, file.content, 'utf-8');
+      count++;
+    }
+  };
+
+  if (extractedFiles.models && extractedFiles.models.length > 0) {
+    await copyFilesToDir(extractedFiles.models, 'models');
+  }
+
+  if (extractedFiles.screens && extractedFiles.screens.length > 0) {
+    await copyFilesToDir(extractedFiles.screens, 'screens');
+  }
+
+  if (extractedFiles.widgets && extractedFiles.widgets.length > 0) {
+    await copyFilesToDir(extractedFiles.widgets, 'widgets');
+  }
+
+  if (extractedFiles.providers && extractedFiles.providers.length > 0) {
+    await copyFilesToDir(extractedFiles.providers, 'providers');
+  }
+
+  if (extractedFiles.theme && extractedFiles.theme.length > 0) {
+    await copyFilesToDir(extractedFiles.theme, 'theme');
+  }
+
+  if (extractedFiles.utils && extractedFiles.utils.length > 0) {
+    await copyFilesToDir(extractedFiles.utils, 'utils');
+  }
+
+  if (extractedFiles.services && extractedFiles.services.length > 0) {
+    await copyFilesToDir(extractedFiles.services, 'services');
+  }
+
+  if (extractedFiles.config && extractedFiles.config.length > 0) {
+    await copyFilesToDir(extractedFiles.config, 'config');
+  }
+
+  return count;
 }
 
 /**
  * Generate code files based on the generation plan
+ * Skips placeholder generation when extracted files are provided
  */
 async function generateCodeFiles(
   outputPath: string,
-  schema: RebuildSchema
+  schema: RebuildSchema,
+  extractedFiles: ExtractedFiles,
+  toolCaller?: (toolName: string, args: any) => Promise<any>,
+  projectId?: string
 ): Promise<number> {
   let count = 0;
 
@@ -387,28 +492,70 @@ async function generateCodeFiles(
     count++;
   }
 
-  // Generate theme files
-  if (schema.generationPlan.theme.length > 0) {
-    await generateThemeFiles(outputPath);
-    count += schema.generationPlan.theme.length;
+  // Generate theme files ONLY if no extracted theme files exist
+  if (schema.generationPlan.theme.length > 0 && (!extractedFiles.theme || extractedFiles.theme.length === 0)) {
+    if (toolCaller && projectId) {
+      // Use actual MCP design tools for theme generation
+      console.log('[Theme] Using MCP design tools for theme generation...');
+      await toolCaller('design_generate_theme', {
+        projectId,
+        primaryColor: schema.projectDefinition.pwa?.themeColor || '#6366F1',
+        darkMode: true,
+        glassmorph: true,
+      });
+      count++;
+    } else {
+      // Fallback to internal generator
+      await generateThemeFiles(outputPath);
+      count += schema.generationPlan.theme.length;
+    }
   }
 
-  // Generate model files
-  for (const model of schema.migrations.models) {
-    await generateModelFile(outputPath, model);
-    count++;
+  // Generate model files ONLY if no extracted models exist
+  if (!extractedFiles.models || extractedFiles.models.length === 0) {
+    for (const model of schema.migrations.models) {
+      await generateModelFile(outputPath, model);
+      count++;
+    }
   }
 
-  // Generate screen files
-  for (const screen of schema.migrations.screens) {
-    await generateScreenFile(outputPath, screen);
-    count++;
+  // Generate screen files ONLY if no extracted screens exist
+  if (!extractedFiles.screens || extractedFiles.screens.length === 0) {
+    for (const screen of schema.migrations.screens) {
+      await generateScreenFile(outputPath, screen);
+      count++;
+    }
   }
 
-  // Generate state files
-  if (schema.generationPlan.state.length > 0) {
-    await generateStateFiles(outputPath, schema);
-    count += schema.generationPlan.state.length;
+  // Generate state files ONLY if no extracted providers exist
+  if (schema.generationPlan.state.length > 0 && (!extractedFiles.providers || extractedFiles.providers.length === 0)) {
+    if (toolCaller && projectId) {
+      // Use actual MCP state tools for state management generation
+      console.log('[State] Using MCP state tools for provider generation...');
+      for (const stateName of schema.generationPlan.state) {
+        if (schema.projectDefinition.stateManagement === 'riverpod') {
+          await toolCaller('state_create_provider', {
+            projectId,
+            name: stateName || 'app_state',
+            stateType: 'Map<String, dynamic>',
+            autoDispose: true,
+          });
+        } else if (schema.projectDefinition.stateManagement === 'bloc') {
+          await toolCaller('state_create_bloc', {
+            projectId,
+            name: stateName || 'AppBloc',
+            events: ['LoadData', 'UpdateData'],
+            states: ['Initial', 'Loading', 'Loaded', 'Error'],
+            useEquatable: true,
+          });
+        }
+      }
+      count += schema.generationPlan.state.length;
+    } else {
+      // Fallback to internal generator
+      await generateStateFiles(outputPath, schema);
+      count += schema.generationPlan.state.length;
+    }
   }
 
   return count;

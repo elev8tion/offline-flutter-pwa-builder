@@ -455,8 +455,8 @@ registerTools(TOOL_HANDLERS, ANALYSIS_TOOLS, (toolName) => (args, context) => {
   return handleAnalysisTool(toolName, args, analysisCtx);
 });
 
-registerTools(TOOL_HANDLERS, GITHUB_TOOLS, (toolName) => (args) =>
-  handleGithubTool(toolName, args)
+registerTools(TOOL_HANDLERS, GITHUB_TOOLS, (toolName) => (args, context) =>
+  handleGithubTool(toolName, args, context)
 );
 
 for (const { alias, target } of TOOL_ALIAS_MAP) {
