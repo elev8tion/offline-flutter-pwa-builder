@@ -67,7 +67,7 @@ export async function extractScreens(
   return screens;
 }
 
-function parseScreensFromContent(content: string, filePath: string): ScreenDefinition[] {
+export function parseScreensFromContent(content: string, filePath: string): ScreenDefinition[] {
   const screens: ScreenDefinition[] = [];
   CLASS_PATTERN.lastIndex = 0;
 

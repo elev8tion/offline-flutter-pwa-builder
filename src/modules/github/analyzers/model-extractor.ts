@@ -111,10 +111,10 @@ export async function extractModels(
  * @param includeAbstract - Whether to include abstract classes
  * @returns Array of model definitions found in the file
  */
-function parseModelsFromContent(
+export function parseModelsFromContent(
   content: string,
   filePath: string,
-  includeAbstract: boolean
+  includeAbstract: boolean = false
 ): ModelDefinition[] {
   const models: ModelDefinition[] = [];
 

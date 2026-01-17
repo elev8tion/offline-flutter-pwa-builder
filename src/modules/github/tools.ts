@@ -8,8 +8,9 @@ import {
   GithubImportAndRebuildSchema,
 } from './config.js';
 import { cloneRepository, formatBytes, cleanupClone } from './utils/git-utils.js';
-import { parsePubspec } from './parsers/index.js';
-import { detectArchitecture, extractModels, extractScreens, extractWidgets, extractTheme } from './analyzers/index.js';
+import { parsePubspec, parsePubspecContent } from './parsers/index.js';
+import { detectArchitecture, extractModels, extractScreens, extractWidgets, extractTheme, parseModelsFromContent, parseScreensFromContent } from './analyzers/index.js';
+import { parseRepomixFile, getModelFiles, getScreenFiles, getStateFiles, getWidgetFiles } from './parsers/repomix-parser.js';
 import { createRebuildSchema, rebuildProject } from './builders/index.js';
 import * as path from 'path';
 import fs from 'fs-extra';
@@ -128,6 +129,30 @@ export const GITHUB_TOOLS = [
         },
       },
       required: ["url", "outputPath"],
+    },
+  },
+  {
+    name: "repomix_import_and_rebuild",
+    description: "Import and rebuild a Flutter project from a repomix-style text file (flattened repository export)",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        filePath: { type: "string", description: "Path to the repomix text file" },
+        outputPath: { type: "string", description: "Output directory for rebuilt project" },
+        options: {
+          type: "object",
+          properties: {
+            keepModels: { type: "boolean", description: "Keep original model definitions" },
+            keepScreenStructure: { type: "boolean", description: "Keep original screen structure" },
+            keepScreenCode: { type: "boolean", description: "Copy original screen code instead of generating placeholders" },
+            applyEdcDesign: { type: "boolean", description: "Apply EDC glassmorphic design system" },
+            addOfflineSupport: { type: "boolean", description: "Add Drift offline database support" },
+            targetArchitecture: { type: "string", enum: ["clean", "feature-first", "layer-first", "keep"], description: "Target architecture pattern" },
+            targetStateManagement: { type: "string", enum: ["riverpod", "bloc", "keep"], description: "Target state management" },
+          },
+        },
+      },
+      required: ["filePath", "outputPath"],
     },
   },
 ];
@@ -269,6 +294,181 @@ export async function handleGithubTool(
           architecture: analysisResult.architecture.detected,
           modelsFound: analysisResult.models.length,
           screensFound: analysisResult.screens.length,
+        },
+        rebuildInfo: {
+          outputPath: rebuildResult.outputPath,
+          filesGenerated: rebuildResult.filesGenerated,
+          modulesInstalled: rebuildResult.modulesInstalled,
+        },
+        warnings: schema.warnings,
+        nextSteps: rebuildResult.nextSteps,
+      };
+    }
+    case 'repomix_import_and_rebuild': {
+      const input = z.object({
+        filePath: z.string(),
+        outputPath: z.string(),
+        options: z.object({
+          keepModels: z.boolean().optional(),
+          keepScreenStructure: z.boolean().optional(),
+          keepScreenCode: z.boolean().optional(),
+          applyEdcDesign: z.boolean().optional(),
+          addOfflineSupport: z.boolean().optional(),
+          targetArchitecture: z.enum(['clean', 'feature-first', 'layer-first', 'keep']).optional(),
+          targetStateManagement: z.enum(['riverpod', 'bloc', 'keep']).optional(),
+        }).optional(),
+      }).parse(args);
+
+      // Step 1: Read and parse repomix file
+      if (!await fs.pathExists(input.filePath)) {
+        return {
+          success: false,
+          error: `Repomix file not found: ${input.filePath}`,
+        };
+      }
+
+      const repomixContent = await fs.readFile(input.filePath, 'utf-8');
+      const parsed = parseRepomixFile(repomixContent);
+
+      // Step 2: Parse pubspec if available
+      let pubspec = null;
+      if (parsed.pubspecContent) {
+        try {
+          pubspec = parsePubspecContent(parsed.pubspecContent);
+        } catch (e) {
+          // Pubspec parsing failed, continue without it
+        }
+      }
+
+      // Step 3: Extract models from model files
+      const modelFiles = getModelFiles(parsed);
+      const models: any[] = [];
+      for (const file of modelFiles) {
+        const fileModels = parseModelsFromContent(file.content, file.path);
+        models.push(...fileModels);
+      }
+
+      // Step 4: Extract screens from screen files
+      const screenFiles = getScreenFiles(parsed);
+      const screens: any[] = [];
+      for (const file of screenFiles) {
+        const fileScreens = parseScreensFromContent(file.content, file.path);
+        screens.push(...fileScreens);
+      }
+
+      // Step 5: Extract state management files
+      const stateFiles = getStateFiles(parsed);
+
+      // Step 6: Extract widget files
+      const widgetFiles = getWidgetFiles(parsed);
+
+      // Step 7: Build analysis result (compatible with createRebuildSchema)
+      // Map 'keep' to 'custom' for architecture type compatibility
+      const targetArch = input.options?.targetArchitecture;
+      const detectedArch: 'clean' | 'feature-first' | 'layer-first' | 'custom' =
+        targetArch === 'keep' ? 'custom' : (targetArch || 'feature-first');
+
+      const analysisResult = {
+        success: true,
+        name: pubspec?.name || parsed.projectName,
+        description: pubspec?.description || '',
+        flutterVersion: pubspec?.flutter?.version || '3.0.0',
+        dartVersion: pubspec?.dart?.minVersion || '3.0.0',
+        architecture: {
+          detected: detectedArch,
+          confidence: 0.8,
+          structure: { name: 'lib', path: 'lib', type: 'directory' as const, children: [] },
+          reasoning: 'Detected from repomix file',
+        },
+        dependencies: pubspec?.dependencies || {
+          stateManagement: 'provider',
+          statePackages: [],
+          database: 'none',
+          databasePackages: [],
+          networking: 'none',
+          networkPackages: [],
+          navigation: 'go_router',
+          navigationPackages: ['go_router'],
+          usesFreezed: false,
+          usesJsonSerializable: false,
+          usesBuildRunner: false,
+          all: {},
+          dev: {},
+        },
+        models,
+        screens,
+        widgets: widgetFiles.map(f => ({
+          name: path.basename(f.path, '.dart'),
+          filePath: f.path,
+          type: 'stateless' as const,
+          props: [],
+          isReusable: true,
+        })),
+        theme: undefined,
+        stats: {
+          totalFiles: parsed.files.length,
+          dartFiles: parsed.dartFiles.length,
+          testFiles: 0,
+          linesOfCode: parsed.dartFiles.reduce((acc, f) => acc + f.content.split('\n').length, 0),
+        },
+      };
+
+      // Step 8: Create rebuild schema
+      const schema = await createRebuildSchema(analysisResult, {
+        keepModels: input.options?.keepModels ?? true,
+        keepScreenStructure: input.options?.keepScreenStructure ?? true,
+        applyEdcDesign: input.options?.applyEdcDesign ?? false,
+        addOfflineSupport: input.options?.addOfflineSupport ?? true,
+        targetArchitecture: input.options?.targetArchitecture,
+        targetStateManagement: input.options?.targetStateManagement,
+      });
+
+      // Step 9: Rebuild project
+      const rebuildResult = await rebuildProject(
+        schema,
+        input.outputPath,
+        {
+          runFlutterCreate: true,
+          formatCode: true,
+        }
+      );
+
+      // Step 10: If keepScreenCode is enabled, copy original screen files
+      if (input.options?.keepScreenCode) {
+        const screensDir = path.join(input.outputPath, 'lib', 'screens');
+        await fs.ensureDir(screensDir);
+
+        for (const file of screenFiles) {
+          // Extract the relative path within screens/
+          const screenPath = file.path.replace(/.*\/screens\//, '');
+          const targetPath = path.join(screensDir, screenPath);
+          await fs.ensureDir(path.dirname(targetPath));
+          await fs.writeFile(targetPath, file.content, 'utf-8');
+        }
+
+        // Also copy widgets if they exist
+        const widgetsDir = path.join(input.outputPath, 'lib', 'widgets');
+        await fs.ensureDir(widgetsDir);
+
+        for (const file of widgetFiles) {
+          const widgetPath = file.path.replace(/.*\/widgets\//, '');
+          const targetPath = path.join(widgetsDir, widgetPath);
+          await fs.ensureDir(path.dirname(targetPath));
+          await fs.writeFile(targetPath, file.content, 'utf-8');
+        }
+      }
+
+      return {
+        success: true,
+        sourceFile: input.filePath,
+        projectName: parsed.projectName,
+        analysisInfo: {
+          totalFiles: parsed.files.length,
+          dartFiles: parsed.dartFiles.length,
+          modelsFound: models.length,
+          screensFound: screens.length,
+          stateFilesFound: stateFiles.length,
+          widgetFilesFound: widgetFiles.length,
         },
         rebuildInfo: {
           outputPath: rebuildResult.outputPath,

@@ -85,6 +85,13 @@ export async function parsePubspec(projectPath: string): Promise<PubspecInfo> {
   }
 
   const content = await fs.readFile(pubspecPath, 'utf-8');
+  return parsePubspecContent(content);
+}
+
+/**
+ * Parse pubspec.yaml content directly (for use with repomix files)
+ */
+export function parsePubspecContent(content: string): PubspecInfo {
   const pubspec = yaml.load(content) as any;
 
   const dependencies = pubspec.dependencies || {};
