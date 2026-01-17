@@ -5,6 +5,8 @@ import { ScreenDefinition } from '../config.js';
 
 // Regex patterns
 const CLASS_PATTERN = /class\s+(\w+)\s+extends\s+(StatefulWidget|StatelessWidget|HookWidget|ConsumerWidget|ConsumerStatefulWidget)/g;
+// Pattern to find State classes for StatefulWidgets
+const STATE_CLASS_PATTERN = /class\s+(_?\w+State)\s+extends\s+State<(\w+)>/g;
 
 const SCAFFOLD_PATTERN = /Scaffold\s*\(/;
 const APPBAR_PATTERN = /appBar\s*:\s*AppBar/;
@@ -69,13 +71,30 @@ function parseScreensFromContent(content: string, filePath: string): ScreenDefin
   const screens: ScreenDefinition[] = [];
   CLASS_PATTERN.lastIndex = 0;
 
+  // Build a map of State classes to their widget names
+  const stateClassBodies = new Map<string, string>();
+  STATE_CLASS_PATTERN.lastIndex = 0;
+  let stateMatch;
+  while ((stateMatch = STATE_CLASS_PATTERN.exec(content)) !== null) {
+    const [, , widgetName] = stateMatch;
+    const stateStart = stateMatch.index;
+    const stateBody = extractClassBody(content, stateStart);
+    stateClassBodies.set(widgetName, stateBody);
+  }
+
   let match;
   while ((match = CLASS_PATTERN.exec(content)) !== null) {
     const [, className, extendsType] = match;
 
     // Extract class body
     const classStart = match.index;
-    const classBody = extractClassBody(content, classStart);
+    let classBody = extractClassBody(content, classStart);
+
+    // For StatefulWidgets, also include the State class body
+    const isStateful = extendsType.includes('Stateful');
+    if (isStateful && stateClassBodies.has(className)) {
+      classBody = classBody + '\n' + stateClassBodies.get(className);
+    }
 
     // Only include if has Scaffold (actual screen, not just widget)
     if (!SCAFFOLD_PATTERN.test(classBody)) continue;
