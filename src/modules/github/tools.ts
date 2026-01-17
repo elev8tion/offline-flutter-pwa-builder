@@ -442,10 +442,13 @@ export async function handleGithubTool(
         config: configFiles.length > 0 ? configFiles : undefined,
       } : undefined;
 
-      // Step 10: Rebuild project with extracted files
-      // The rebuildProject() function will now handle copying extracted files
-      // and skip generating placeholders for files that already exist
-      // Pass a tool caller function so rebuildProject can call actual MCP tools
+      // Step 10: Rebuild project with extracted files using PROPER MCP FLOW
+      // Pass toolCaller and projectEngine so rebuildProject can:
+      // 1. Create in-memory project
+      // 2. Call MCP tools to configure it
+      // 3. Generate files from project configuration via module hooks
+      // 4. Write generated files to disk
+      // 5. Copy extracted files on top
       const rebuildResult = await rebuildProject(
         schema,
         input.outputPath,
@@ -464,6 +467,7 @@ export async function handleGithubTool(
             }
             return handler(args, context);
           } : undefined,
+          projectEngine: context?.projectEngine, // Pass ProjectEngine for proper MCP flow
         }
       );
 

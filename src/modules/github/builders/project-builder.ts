@@ -38,6 +38,7 @@ export interface RebuildOptions {
   generateTests?: boolean;
   extractedFiles?: ExtractedFiles;
   toolCaller?: (toolName: string, args: any) => Promise<any>;
+  projectEngine?: any; // ProjectEngine instance for generating files from config
 }
 
 export interface RebuildResult {
@@ -114,34 +115,43 @@ export async function rebuildProject(
     generateTests = false,
     extractedFiles,
     toolCaller,
+    projectEngine,
   } = options;
+
+  // Track file counts for both paths
+  let filesGenerated = 0;
+  let filesCopied = 0;
 
   try {
     // 1. Create output directory
     console.log(`Creating output directory: ${outputPath}`);
     await fs.ensureDir(outputPath);
 
-    // 2. Create Flutter project structure
-    const projectId = await createProjectStructure(outputPath, schema);
+    // Generate a unique project ID
+    const projectId = `rebuild_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
-    // 3. Generate configuration files
-    await generateConfigFiles(outputPath, schema);
+    // 2. USE PROPER MCP FLOW: Create in-memory project first
+    if (toolCaller && projectEngine) {
+      console.log('[MCP Flow] Creating in-memory project...');
 
-    // 4. Copy extracted files from original project (if provided)
-    const filesCopied = await copyExtractedFiles(outputPath, extractedFiles || {});
+      // Create project using project_create_scaffold tool
+      await toolCaller('project_create_scaffold', {
+        projectId,
+        name: schema.projectDefinition.name,
+        displayName: schema.projectDefinition.displayName,
+        description: schema.projectDefinition.description,
+        architecture: schema.projectDefinition.architecture,
+        stateManagement: schema.projectDefinition.stateManagement,
+        targets: schema.projectDefinition.targets,
+      });
 
-    // 5. Generate new code files (only for missing files)
-    const filesGenerated = await generateCodeFiles(outputPath, schema, extractedFiles || {}, toolCaller, projectId);
+      // 3. Configure project using MCP tools
+      console.log('[MCP Flow] Configuring project with MCP tools...');
 
-    // 6. Setup Drift database if schemas are provided
-    if (schema.driftSchemas && schema.driftSchemas.length > 0) {
-      console.log('\n[Drift Integration] Setting up offline database...');
-
-      if (toolCaller) {
-        // Use actual MCP tools for Drift setup
-        console.log('[Drift] Using MCP tools for database setup...');
+      // Setup Drift database if schemas are provided
+      if (schema.driftSchemas && schema.driftSchemas.length > 0) {
+        console.log('[MCP Flow] Adding Drift tables...');
         for (const tableSchema of schema.driftSchemas) {
-          console.log(`[Drift] Adding table: ${tableSchema.name}`);
           await toolCaller('drift_add_table', {
             projectId,
             name: tableSchema.name,
@@ -153,19 +163,91 @@ export async function rebuildProject(
 
         // Enable encryption if needed
         if (schema.projectDefinition.pwa?.offline?.encryption) {
-          console.log('[Drift] Enabling database encryption...');
           await toolCaller('drift_enable_encryption', {
             projectId,
             strategy: 'stored',
           });
         }
-      } else {
-        // Fallback to internal generator
+      }
+
+      // Setup theme if needed
+      if (schema.generationPlan.theme.length > 0 && (!extractedFiles?.theme || extractedFiles.theme.length === 0)) {
+        console.log('[MCP Flow] Generating theme...');
+        await toolCaller('design_generate_theme', {
+          projectId,
+          primaryColor: schema.projectDefinition.pwa?.themeColor || '#6366F1',
+          darkMode: true,
+          glassmorph: true,
+        });
+      }
+
+      // Setup state management if needed
+      if (schema.generationPlan.state.length > 0 && (!extractedFiles?.providers || extractedFiles.providers.length === 0)) {
+        console.log('[MCP Flow] Creating state providers...');
+        for (const stateName of schema.generationPlan.state) {
+          if (schema.projectDefinition.stateManagement === 'riverpod') {
+            await toolCaller('state_create_provider', {
+              projectId,
+              name: stateName || 'app_state',
+              stateType: 'Map<String, dynamic>',
+              autoDispose: true,
+            });
+          } else if (schema.projectDefinition.stateManagement === 'bloc') {
+            await toolCaller('state_create_bloc', {
+              projectId,
+              name: stateName || 'AppBloc',
+              events: ['LoadData', 'UpdateData'],
+              states: ['Initial', 'Loading', 'Loaded', 'Error'],
+              useEquatable: true,
+            });
+          }
+        }
+      }
+
+      // 4. Generate files from project configuration
+      console.log('[MCP Flow] Generating files from project configuration...');
+      const generatedFiles = await projectEngine.generate(projectId);
+      filesGenerated = generatedFiles.length;
+
+      // Write generated files to disk
+      console.log(`[MCP Flow] Writing ${filesGenerated} generated files to disk...`);
+      for (const file of generatedFiles) {
+        const filePath = path.join(outputPath, file.path);
+        await fs.ensureDir(path.dirname(filePath));
+        await fs.writeFile(filePath, file.content, 'utf-8');
+      }
+
+      // 5. Copy extracted files on top of generated files
+      filesCopied = await copyExtractedFiles(outputPath, extractedFiles || {});
+      console.log(`[MCP Flow] Copied ${filesCopied} extracted files`);
+
+    } else {
+      // FALLBACK: Use old internal generator flow
+      console.log('[Fallback] Using internal generators (no ProjectEngine available)...');
+
+      // 2. Create Flutter project structure
+      const fallbackProjectId = await createProjectStructure(outputPath, schema);
+      filesGenerated++;
+
+      // 3. Generate configuration files
+      await generateConfigFiles(outputPath, schema);
+      filesGenerated++;
+
+      // 4. Copy extracted files from original project (if provided)
+      filesCopied = await copyExtractedFiles(outputPath, extractedFiles || {});
+
+      // 5. Generate new code files (only for missing files)
+      await generateCodeFiles(outputPath, schema, extractedFiles || {}, toolCaller, fallbackProjectId);
+      filesGenerated += schema.generationPlan.screens.length + schema.generationPlan.models.length;
+
+      // 6. Setup Drift database using internal generator
+      if (schema.driftSchemas && schema.driftSchemas.length > 0) {
         await setupDriftDatabase(
           schema.driftSchemas,
           outputPath,
           schema.projectDefinition.name
         );
+        filesGenerated += schema.driftSchemas.length;
       }
     }
 
